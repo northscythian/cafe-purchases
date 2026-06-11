@@ -70,8 +70,6 @@ CATEGORIES = {
     "Молочные продукты": ["сыр", "моцарелла", "сметана", "молоко", "майонез", "сметанковый", "джугас"],
     "Овощи и зелень": ["лук", "чеснок", "помидоры", "огурцы", "морковь", "перец", "картофель", "укроп", "петрушка", "сельдерей", "джусай", "зеленый лук"],
     "Бакалея": ["мука", "масло", "кетчуп", "соус", "лаваш", "яйца", "специи", "приправа", "орегано", "базилик", "лавровый лист", "уксус", "соевый соус", "барбекю", "фритюра", "дрожжи", "томатная паста"],
-    "Хозтовары": ["перчатки", "тряпки", "губки", "салфетки", "кнопки", "маркер", "тетрадь", "мелки", "посуда", "сковорода", "тарелки", "миски", "поварешка", "калькулятор"],
-    "Аптечка": ["бинт", "перекись", "спирт", "зеленка", "марля", "ватные палочки"],
     "Прочее": []
 }
 
@@ -83,134 +81,38 @@ def detect_category(product):
                 return cat
     return "Прочее"
 
-def detect_unit(product):
-    """Определяет единицу измерения по названию товара"""
-    product = product.lower()
-    if any(x in product for x in ["перчатки", "тряпки", "салфетки", "кнопки", "маркер", "тетрадь", "мелки", "тарелки", "миски", "поварешка", "калькулятор", "рулон"]):
-        return "шт"
-    if any(x in product for x in ["бинт", "марля"]):
-        return "м"
-    if any(x in product for x in ["спирт", "перекись", "зеленка"]):
-        return "мл"
-    return "шт"
-
-def smart_parse_excel(df_upload):
-    """Умный парсер Excel файла — определяет структуру и корректно заполняет данные"""
-    required_cols = ["Дата", "Товар", "Цена за ед.", "Количество", "Единица", "Сумма", "Поставщик", "Категория", "Примечаение"]
+# === ПРОСТОЙ ПАРСЕР ТЕКСТА ===
+def parse_simple_text(text):
+    """Простой парсер для текста с закупками"""
+    purchases = []
+    lines = text.split('\n')
     
-    # Словарь соответствия колонок (поддерживает разные названия)
-    col_mapping = {
-        "Товар": ["товар", "название", "продукт", "наименование", "item", "product"],
-        "Цена за ед.": ["цена за ед", "цена за ед.", "цена", "price", "цена за кг", "цена за шт"],
-        "Количество": ["количество", "кол-во", "qty", "quantity", "кол"],
-        "Единица": ["единица", "ед", "ед.", "unit"],
-        "Сумма": ["сумма", "total", "сумма ₸", "сумма (₸)"],
-        "Поставщик": ["поставщик", "supplier", "поставщик"],
-        "Категория": ["категория", "category", "кат"],
-        "Дата": ["дата", "date", "день"],
-        "Примечание": ["примечание", "note", "комментарий"]
-    }
-    
-    # Определяем, какие колонки есть в файле
-    detected = {}
-    for target, variants in col_mapping.items():
-        for col in df_upload.columns:
-            col_lower = str(col).lower().strip()
-            for variant in variants:
-                if variant in col_lower:
-                    detected[target] = col
-                    break
-            if target in detected:
-                break
-    
-    # Если не нашли "Товар" — предположим, что это первая колонка
-    if "Товар" not in detected and len(df_upload.columns) > 0:
-        detected["Товар"] = df_upload.columns[0]
-    
-    result = []
-    for idx, row in df_upload.iterrows():
-        try:
-            # Получаем товар
-            product = str(row[detected["Товар"]]) if "Товар" in detected and pd.notna(row[detected["Товар"]]) else ""
-            if not product or product.lower() in ['товар', 'название', 'nan', '']:
-                continue
-            
-            # Получаем цену
-            price = 0
-            if "Цена за ед." in detected and pd.notna(row[detected["Цена за ед."]]):
-                try:
-                    price = float(str(row[detected["Цена за ед."]]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
-                except:
-                    price = 0
-            
-            # Получаем количество
-            qty = 1
-            if "Количество" in detected and pd.notna(row[detected["Количество"]]):
-                try:
-                    qty = float(str(row[detected["Количество"]]).replace(',', '.').strip())
-                except:
-                    qty = 1
-            
-            # Получаем единицу измерения
-            unit = "шт"
-            if "Единица" in detected and pd.notna(row[detected["Единица"]]):
-                unit = str(row[detected["Единица"]]).strip()
-            else:
-                unit = detect_unit(product)
-            
-            # Получаем сумму
-            total = 0
-            if "Сумма" in detected and pd.notna(row[detected["Сумма"]]):
-                try:
-                    total = float(str(row[detected["Сумма"]]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
-                except:
-                    total = 0
-            
-            # Если сумма не указана, но есть цена и количество
-            if total == 0 and price > 0 and qty > 0:
-                total = price * qty
-            # Если цена не указана, но есть сумма и количество
-            if price == 0 and total > 0 and qty > 0:
-                price = total / qty
-            
-            # Получаем поставщика
-            supplier = "Замира"
-            if "Поставщик" in detected and pd.notna(row[detected["Поставщик"]]):
-                supplier = str(row[detected["Поставщик"]]).strip()
-            
-            # Получаем категорию (если есть)
-            category = None
-            if "Категория" in detected and pd.notna(row[detected["Категория"]]):
-                category = str(row[detected["Категория"]]).strip()
-            if not category:
-                category = detect_category(product)
-            
-            # Получаем дату
-            date = datetime.now().strftime("%d.%m.%Y")
-            if "Дата" in detected and pd.notna(row[detected["Дата"]]):
-                try:
-                    d = pd.to_datetime(row[detected["Дата"]], errors='coerce')
-                    if pd.notna(d):
-                        date = d.strftime("%d.%m.%Y")
-                except:
-                    pass
-            
-            if total > 0:
-                result.append({
-                    "Дата": date,
-                    "Товар": product[:100],
-                    "Цена за ед.": round(price, 2),
-                    "Количество": qty,
-                    "Единица": unit,
-                    "Сумма": round(total, 2),
-                    "Поставщик": supplier,
-                    "Категория": category,
-                    "Примечание": ""
-                })
-        except Exception as e:
+    for line in lines:
+        line = line.strip()
+        if not line:
             continue
+        
+        # Ищем числа (потенциальные суммы)
+        numbers = re.findall(r'\b(\d{3,6})\b', line)
+        if not numbers:
+            continue
+        
+        total = int(numbers[-1])
+        
+        # Название товара
+        product = re.sub(r'^\d+\s+', '', line)
+        product = re.sub(r'\s+\d{3,6}\s*$', '', product)
+        product = re.sub(r'\d+\s*(?:тг|₸)', '', product)
+        product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product)
+        product = re.sub(r'\s+', ' ', product).strip()
+        
+        if product and len(product) > 2 and total > 0:
+            purchases.append({
+                "Товар": product,
+                "Сумма": total
+            })
     
-    return pd.DataFrame(result)
+    return purchases
 
 def generate_report(df, period_name):
     if df.empty:
@@ -299,18 +201,131 @@ def send_report_to_sheets(df, period_name):
 
 st.markdown("""
 <style>
-    .stApp { background: linear-gradient(135deg, #2d2b2a 0%, #1a1a1a 100%); }
-    div[data-testid="stMetric"] { background: linear-gradient(135deg, #3d3a38, #2c2a28); border-radius: 20px; padding: 20px; border: 1px solid #d4a373; }
-    h1, h2, h3, h4 { color: #d4a373 !important; }
-    .stButton > button { background: linear-gradient(135deg, #d4a373, #b5835a); color: white; border-radius: 30px; }
-    .stDataFrame { background: #2a2a2a; border-radius: 15px; border: 1px solid #d4a373; }
-    .stDataFrame th { background: #d4a373 !important; color: #1a1a1a !important; }
-    .stDataFrame td { color: white !important; }
+    .stApp { background: linear-gradient(135deg, #0d2b0d 0%, #051a05 100%); }
+    
+    div[data-testid="stMetric"] {
+        background: linear-gradient(135deg, #1a3a1a, #0f2a0f);
+        border-radius: 20px;
+        padding: 20px;
+        border: 1px solid #2ecc71;
+        transition: transform 0.3s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-5px);
+    }
+    div[data-testid="stMetric"] label {
+        color: #2ecc71 !important;
+        font-size: 16px !important;
+        font-weight: bold !important;
+    }
+    div[data-testid="stMetric"] div {
+        color: #58d68d !important;
+        font-size: 32px !important;
+        font-weight: bold !important;
+    }
+    
+    h1, h2, h3, h4 {
+        color: #58d68d !important;
+        font-family: 'Segoe UI', 'Arial', sans-serif;
+    }
+    h1 {
+        border-bottom: 3px solid #2ecc71;
+        display: inline-block;
+        padding-bottom: 10px;
+    }
+    
+    [data-testid="stSidebar"] {
+        background: #0a1a0a;
+        border-right: 2px solid #2ecc71;
+    }
+    [data-testid="stSidebar"] * {
+        color: #58d68d !important;
+    }
+    [data-testid="stSidebar"] .stSelectbox label {
+        color: #2ecc71 !important;
+        font-weight: bold;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        color: white;
+        border: none;
+        border-radius: 30px;
+        padding: 12px 28px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        transform: scale(1.02);
+        background: linear-gradient(135deg, #3edd81, #2ecc71);
+        color: white;
+    }
+    
+    .stTextInput > div > div > input, 
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > select {
+        background-color: #0f1a0f;
+        border-radius: 15px;
+        border: 1px solid #2ecc71;
+        font-size: 16px;
+        color: #58d68d !important;
+    }
+    .stTextInput label, .stNumberInput label, .stTextArea label {
+        color: #2ecc71 !important;
+        font-weight: bold;
+    }
+    
+    .stDataFrame {
+        background: #0f1a0f;
+        border-radius: 15px;
+        border: 1px solid #2ecc71;
+    }
+    .stDataFrame th {
+        background: #2ecc71 !important;
+        color: #051a05 !important;
+        font-weight: bold;
+    }
+    .stDataFrame td {
+        color: #58d68d !important;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #0f1a0f;
+        border-radius: 30px;
+        padding: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 25px;
+        padding: 8px 20px;
+        font-weight: bold;
+        color: #58d68d;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #2ecc71 !important;
+        color: #051a05 !important;
+    }
+    
+    .stInfo {
+        background-color: #0f1a0f !important;
+        color: #2ecc71 !important;
+    }
+    
+    [data-testid="stMetricValue"] {
+        color: #58d68d !important;
+        font-size: 36px !important;
+        font-weight: bold !important;
+    }
+    
+    [data-testid="stMetricDelta"] {
+        color: #2ecc71 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("📦 Учет закупок кафе")
-st.caption("Данные сохраняются в Google Sheets | Поддерживает любые форматы Excel")
+st.caption("Данные сохраняются в Google Sheets")
 
 df = load_data()
 if df.empty:
@@ -325,26 +340,98 @@ with st.sidebar:
     
     # === ЗАГРУЗКА EXCEL ===
     st.markdown("### 📎 Загрузить Excel")
-    st.info("Поддерживаются любые форматы: приложение само определит колонки")
     uploaded_file = st.file_uploader("Файл .xlsx или .xls", type=["xlsx", "xls"])
     
     if uploaded_file is not None:
         try:
             df_upload = pd.read_excel(uploaded_file)
             st.success(f"Загружено: {len(df_upload)} строк")
-            with st.expander("Просмотр загруженных данных"):
+            with st.expander("Просмотр данных"):
                 st.dataframe(df_upload.head(10), use_container_width=True)
-            if st.button("📊 Умная обработка и добавление", use_container_width=True):
-                processed_df = smart_parse_excel(df_upload)
-                if not processed_df.empty:
-                    df = pd.concat([df, processed_df], ignore_index=True)
+            if st.button("📊 Добавить данные из Excel"):
+                added = 0
+                for idx, row in df_upload.iterrows():
+                    try:
+                        product = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ""
+                        if not product or product.lower() in ['товар', 'название', 'nan']:
+                            continue
+                        price = 0
+                        try:
+                            price = float(str(row.iloc[1]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
+                        except:
+                            price = 0
+                        qty = 1
+                        try:
+                            qty = float(str(row.iloc[2]).replace(',', '.').strip())
+                        except:
+                            qty = 1
+                        total = 0
+                        try:
+                            total = float(str(row.iloc[3]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
+                        except:
+                            total = 0
+                        if total == 0 and price > 0 and qty > 0:
+                            total = price * qty
+                        if total > 0:
+                            new_row = pd.DataFrame([{
+                                "Дата": datetime.now().strftime("%d.%m.%Y"),
+                                "Товар": product[:100],
+                                "Цена за ед.": round(price, 2),
+                                "Количество": qty,
+                                "Единица": "шт",
+                                "Сумма": round(total, 2),
+                                "Поставщик": "Замира",
+                                "Категория": detect_category(product),
+                                "Примечание": ""
+                            }])
+                            df = pd.concat([df, new_row], ignore_index=True)
+                            added += 1
+                    except:
+                        pass
+                if added > 0:
                     save_data(df)
-                    st.success(f"✅ Добавлено {len(processed_df)} позиций!")
+                    st.success(f"✅ Добавлено {added} позиций!")
                     st.rerun()
                 else:
-                    st.error("Не удалось распознать данные. Проверьте формат файла.")
+                    st.error("Не удалось добавить позиции")
         except Exception as e:
             st.error(f"Ошибка: {e}")
+    
+    st.markdown("---")
+    
+    # === ВСТАВКА ТЕКСТА ===
+    st.markdown("### 📝 Вставить текст из документа")
+    st.info("Скопируйте текст из Word-файла и вставьте сюда")
+    
+    manual_text = st.text_area("Вставьте текст с закупками:", height=200)
+    
+    if st.button("📊 Обработать текст", key="parse_manual"):
+        if manual_text:
+            purchases = parse_simple_text(manual_text)
+            if purchases:
+                added = 0
+                for p in purchases:
+                    new_row = pd.DataFrame([{
+                        "Дата": datetime.now().strftime("%d.%m.%Y"),
+                        "Товар": p["Товар"],
+                        "Цена за ед.": p.get("Цена за ед.", 0),
+                        "Количество": p.get("Количество", 1),
+                        "Единица": p.get("Единица", "шт"),
+                        "Сумма": p["Сумма"],
+                        "Поставщик": "Замира",
+                        "Категория": detect_category(p["Товар"]),
+                        "Примечание": ""
+                    }])
+                    df = pd.concat([df, new_row], ignore_index=True)
+                    added += 1
+                if added > 0:
+                    save_data(df)
+                    st.success(f"✅ Добавлено {added} позиций!")
+                    st.rerun()
+                else:
+                    st.error("Не удалось распознать данные")
+            else:
+                st.error("Не найдено данных в тексте")
     
     st.markdown("---")
     
@@ -356,7 +443,7 @@ with st.sidebar:
         with col1:
             price = st.number_input("Цена за ед.", min_value=0.0, value=0.0, step=10.0)
             qty = st.number_input("Количество", min_value=0.0, value=1.0, step=0.1)
-            unit = st.selectbox("Единица", ["кг", "г", "л", "мл", "шт", "м"])
+            unit = st.selectbox("Единица", ["кг", "г", "л", "мл", "шт"])
         with col2:
             total = st.number_input("Сумма", min_value=0.0, value=0.0, step=100.0)
             supplier = st.selectbox("Поставщик", ["Замира", "Магнум", "Метро", "Другое"])
