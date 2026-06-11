@@ -203,102 +203,238 @@ st.markdown("""
 <style>
     /* АДАПТИВНАЯ ТЕМА - подстраивается под систему */
     
-    /* Светлая тема (по умолчанию) */
+    /* === СВЕТЛАЯ ТЕМА (по умолчанию) === */
     .stApp {
         background: #f8f9fa;
     }
     
-    h1, h2, h3, h4, p, li, .stMarkdown, label {
+    /* Текст */
+    h1, h2, h3, h4, p, li, .stMarkdown, label, .stCaption {
         color: #212529;
     }
     
+    /* Метрики */
     div[data-testid="stMetric"] {
-        background: rgba(0, 0, 0, 0.05);
+        background: rgba(0, 0, 0, 0.03);
         border-radius: 20px;
         padding: 20px;
         border: 1px solid rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
     }
-    
     div[data-testid="stMetric"] label {
         color: #212529 !important;
     }
-    
     div[data-testid="stMetric"] div {
         color: #212529 !important;
     }
     
+    /* Боковая панель */
+    [data-testid="stSidebar"] {
+        background: #f0f0f0;
+        border-right: 1px solid #ddd;
+    }
+    [data-testid="stSidebar"] * {
+        color: #212529 !important;
+    }
+    
+    /* Поля ввода - СВЕТЛАЯ ТЕМА */
+    .stTextInput > div > div > input, 
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > select,
+    .stDateInput > div > div > input,
+    .stTimeInput > div > div > input {
+        background-color: #ffffff;
+        border-radius: 15px;
+        border: 1px solid #ced4da;
+        font-size: 16px;
+        color: #212529 !important;
+    }
+    .stTextInput > div > div > input:focus, 
+    .stNumberInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: #4a90e2;
+        box-shadow: 0 0 0 2px rgba(74,144,226,0.2);
+        outline: none;
+    }
+    .stTextInput label, .stNumberInput label, .stTextArea label, .stSelectbox label {
+        color: #212529 !important;
+        font-weight: 500;
+    }
+    
+    /* Выпадающие списки */
+    .stSelectbox > div > div > div {
+        background-color: #ffffff;
+    }
+    
+    /* Мультиселект */
+    .stMultiSelect div {
+        background-color: #ffffff;
+        color: #212529;
+    }
+    
+    /* Кнопки */
     .stButton > button {
         background: #4a90e2;
         color: white;
+        border: none;
         border-radius: 30px;
+        padding: 10px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        transform: scale(1.02);
+        background: #5a9ee2;
+        color: white;
+    }
+    
+    /* Таблицы */
+    .stDataFrame {
+        background: #ffffff;
+        border-radius: 15px;
+        border: 1px solid #dee2e6;
+    }
+    .stDataFrame th {
+        background: #4a90e2 !important;
+        color: white !important;
+        font-weight: bold;
+    }
+    .stDataFrame td {
+        color: #212529 !important;
+    }
+    
+    /* Вкладки */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: rgba(0, 0, 0, 0.04);
+        border-radius: 30px;
+        padding: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 25px;
+        padding: 8px 20px;
+        font-weight: bold;
+        color: #212529;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #4a90e2 !important;
+        color: white !important;
+    }
+    
+    /* Информационные блоки */
+    .stInfo {
+        background-color: #e9ecef !important;
+        color: #212529 !important;
+        border-left: 4px solid #4a90e2;
+    }
+    
+    /* Слайдеры */
+    .stSlider > div > div > div {
+        background-color: #4a90e2;
+    }
+    
+    /* Чекбоксы и радиокнопки */
+    .stCheckbox label, .stRadio label {
+        color: #212529 !important;
+    }
+    
+    /* === ТЁМНАЯ ТЕМА (автоматически) === */
+    @media (prefers-color-scheme: dark) {
+        .stApp {
+            background: #1a1a1a;
+        }
+        
+        h1, h2, h3, h4, p, li, .stMarkdown, label, .stCaption {
+            color: #e0e0e0;
+        }
+        
+        div[data-testid="stMetric"] {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        div[data-testid="stMetric"] label {
+            color: #e0e0e0 !important;
+        }
+        div[data-testid="stMetric"] div {
+            color: #e0e0e0 !important;
+        }
+        
+        [data-testid="stSidebar"] {
+            background: #2a2a2a;
+            border-right: 1px solid #444;
+        }
+        [data-testid="stSidebar"] * {
+            color: #e0e0e0 !important;
+        }
+        
+        /* Поля ввода - ТЁМНАЯ ТЕМА */
+        .stTextInput > div > div > input, 
+        .stNumberInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stSelectbox > div > div > select,
+        .stDateInput > div > div > input,
+        .stTimeInput > div > div > input {
+            background-color: #2d2d2d;
+            border-color: #555;
+            color: #e0e0e0 !important;
+        }
+        .stTextInput > div > div > input:focus, 
+        .stNumberInput > div > div > input:focus,
+        .stTextArea > div > div > textarea:focus {
+            border-color: #4a90e2;
+        }
+        .stTextInput label, .stNumberInput label, .stTextArea label, .stSelectbox label {
+            color: #e0e0e0 !important;
+        }
+        
+        .stSelectbox > div > div > div {
+            background-color: #2d2d2d;
+            color: #e0e0e0;
+        }
+        
+        .stMultiSelect div {
+            background-color: #2d2d2d;
+            color: #e0e0e0;
+        }
+        
+        .stDataFrame {
+            background: #2d2d2d;
+            border-color: #444;
+        }
+        .stDataFrame td {
+            color: #e0e0e0 !important;
+        }
+        
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        .stTabs [data-baseweb="tab"] {
+            color: #e0e0e0;
+        }
+        
+        .stInfo {
+            background-color: #2a2a2a !important;
+            color: #e0e0e0 !important;
+        }
+        
+        .stCheckbox label, .stRadio label {
+            color: #e0e0e0 !important;
+        }
+    }
+    
+    /* === ОБЩИЕ СТИЛИ (работают в обеих темах) === */
+    .stButton > button {
+        background: #4a90e2;
+        color: white;
+    }
+    .stButton > button:hover {
+        background: #5a9ee2;
     }
     
     .stDataFrame th {
         background: #4a90e2 !important;
         color: white !important;
-    }
-    
-    .stDataFrame td {
-        color: #212529 !important;
-    }
-    
-    /* Тёмная тема - автоматически срабатывает, если у пользователя включена тёмная тема */
-    @media (prefers-color-scheme: dark) {
-        .stApp {
-            background: #1a1a1a;
-        }
-        h1, h2, h3, h4, p, li, .stMarkdown, label {
-            color: #f0f0f0;
-        }
-        div[data-testid="stMetric"] {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        div[data-testid="stMetric"] label {
-            color: #f0f0f0 !important;
-        }
-        div[data-testid="stMetric"] div {
-            color: #f0f0f0 !important;
-        }
-        .stDataFrame td {
-            color: #f0f0f0 !important;
-        }
-        .stDataFrame {
-            background: #2a2a2a;
-        }
-    }
-    
-    /* Общие стили */
-    .stButton > button:hover {
-        transform: scale(1.02);
-        background: #5a9ee2;
-    }
-    
-    .stTextInput > div > div > input, 
-    .stNumberInput > div > div > input,
-    .stTextArea > div > div > textarea,
-    .stSelectbox > div > div > select {
-        border-radius: 15px;
-        border: 1px solid #ccc;
-        font-size: 16px;
-    }
-    
-    .stDataFrame {
-        border-radius: 15px;
-        border: 1px solid #ddd;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: rgba(0, 0, 0, 0.05);
-        border-radius: 30px;
-        padding: 5px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 25px;
-        padding: 8px 20px;
-        font-weight: bold;
     }
     
     .stTabs [aria-selected="true"] {
