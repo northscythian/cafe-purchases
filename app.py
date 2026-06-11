@@ -201,29 +201,146 @@ def send_report_to_sheets(df, period_name):
 
 st.markdown("""
 <style>
-    .stApp { background: linear-gradient(135deg, #2d2b2a 0%, #1a1a1a 100%); }
-    div[data-testid="stMetric"] { background: linear-gradient(135deg, #3d3a38, #2c2a28); border-radius: 20px; padding: 20px; border: 1px solid #d4a373; }
+    /* СВЕТЛЫЙ ФОН */
+    .stApp { background: linear-gradient(135deg, #f5f5f0 0%, #e8e8e0 100%); }
     
-    /* ТОЛЬКО ЦВЕТ ТЕКСТА МЕНЯЕМ НА ЗЕЛЁНЫЙ */
+    div[data-testid="stMetric"] { 
+        background: linear-gradient(135deg, #ffffff, #f0f0e8); 
+        border-radius: 20px; 
+        padding: 20px; 
+        border: 1px solid #c0c0b0; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    div[data-testid="stMetric"] label { 
+        color: #2c5a2c !important; 
+        font-size: 16px !important; 
+        font-weight: bold !important; 
+    }
+    div[data-testid="stMetric"] div { 
+        color: #1a4a1a !important; 
+        font-size: 32px !important; 
+        font-weight: bold !important; 
+    }
+    
+    /* ТЁМНЫЙ ТЕКСТ ДЛЯ СВЕТЛОГО ФОНА */
     h1, h2, h3, h4, p, li, span, div, .stMarkdown, .stCaption, label {
-        color: #4ade80 !important;
+        color: #2c3e2c !important;
     }
-    /* Заголовки чуть ярче */
     h1, h2, h3, h4 {
-        color: #22c55e !important;
-    }
-    /* Цифры в метриках */
-    div[data-testid="stMetric"] div {
-        color: #4ade80 !important;
-    }
-    div[data-testid="stMetric"] label {
-        color: #22c55e !important;
+        color: #1a4a1a !important;
+        border-bottom: 2px solid #6ab04c;
+        display: inline-block;
+        padding-bottom: 8px;
     }
     
-    .stButton > button { background: linear-gradient(135deg, #d4a373, #b5835a); color: white; border-radius: 30px; }
-    .stDataFrame { background: #2a2a2a; border-radius: 15px; border: 1px solid #d4a373; }
-    .stDataFrame th { background: #d4a373 !important; color: #1a1a1a !important; }
-    .stDataFrame td { color: white !important; }
+    /* БОКОВАЯ ПАНЕЛЬ */
+    [data-testid="stSidebar"] {
+        background: #e0e0d8;
+        border-right: 1px solid #c0c0b0;
+    }
+    [data-testid="stSidebar"] * {
+        color: #2c3e2c !important;
+    }
+    [data-testid="stSidebar"] .stSelectbox label {
+        color: #1a4a1a !important;
+        font-weight: bold;
+    }
+    
+    /* КНОПКИ */
+    .stButton > button { 
+        background: linear-gradient(135deg, #6ab04c, #4a9030); 
+        color: white; 
+        border: none; 
+        border-radius: 30px; 
+        padding: 10px 24px; 
+        font-weight: bold; 
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover { 
+        transform: scale(1.02); 
+        background: linear-gradient(135deg, #7ec05c, #5aa040); 
+        color: white; 
+    }
+    
+    /* ПОЛЯ ВВОДА */
+    .stTextInput > div > div > input, 
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > select {
+        background-color: #ffffff;
+        border-radius: 15px;
+        border: 1px solid #c0c0b0;
+        font-size: 16px;
+        color: #2c3e2c !important;
+    }
+    .stTextInput label, .stNumberInput label, .stTextArea label {
+        color: #1a4a1a !important;
+        font-weight: bold;
+    }
+    
+    /* ТАБЛИЦЫ */
+    .stDataFrame {
+        background: #ffffff;
+        border-radius: 15px;
+        border: 1px solid #c0c0b0;
+    }
+    .stDataFrame th {
+        background: #6ab04c !important;
+        color: white !important;
+        font-weight: bold;
+    }
+    .stDataFrame td {
+        color: #2c3e2c !important;
+    }
+    
+    /* ВКЛАДКИ */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #e0e0d8;
+        border-radius: 30px;
+        padding: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 25px;
+        padding: 8px 20px;
+        font-weight: bold;
+        color: #2c3e2c;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #6ab04c !important;
+        color: white !important;
+    }
+    
+    /* ИНФОРМАЦИОННЫЕ БЛОКИ */
+    .stInfo {
+        background-color: #e8e8e0 !important;
+        color: #1a4a1a !important;
+        border-left: 4px solid #6ab04c;
+    }
+    
+    /* ЦИФРЫ В МЕТРИКАХ */
+    [data-testid="stMetricValue"] {
+        color: #1a4a1a !important;
+        font-size: 36px !important;
+        font-weight: bold !important;
+    }
+    [data-testid="stMetricDelta"] {
+        color: #6ab04c !important;
+    }
+    
+    /* КАРТОЧКИ (если есть) */
+    .dish-card {
+        background: #ffffff;
+        border-radius: 20px;
+        padding: 15px;
+        margin: 10px 0;
+        border-left: 5px solid #6ab04c;
+        color: #2c3e2c;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .dish-card strong {
+        color: #1a4a1a;
+    }
 </style>
 """, unsafe_allow_html=True)
 
