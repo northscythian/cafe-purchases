@@ -81,8 +81,9 @@ def detect_category(product):
                 return cat
     return "Прочее"
 
-# === ПАРСИНГ DOCX ===
-def parse_docx_purchases(text):
+# === ПРОСТОЙ ПАРСЕР ТЕКСТА ===
+def parse_simple_text(text):
+    """Простой парсер для текста с закупками"""
     purchases = []
     lines = text.split('\n')
     
@@ -90,77 +91,28 @@ def parse_docx_purchases(text):
         line = line.strip()
         if not line:
             continue
-        if line.startswith('№') or line.startswith('--') or 'Товар' in line or 'Цена' in line:
-            continue
-        if len(line) < 10:
-            continue
         
-        numbers = re.findall(r'(\d{3,6})', line)
+        # Ищем числа (потенциальные суммы)
+        numbers = re.findall(r'\b(\d{3,6})\b', line)
         if not numbers:
             continue
         
         total = int(numbers[-1])
         
-        product_line = re.sub(r'^\d+\s+', '', line)
-        product_line = re.sub(r'\s+\d{3,6}\s*$', '', product_line)
-        product_line = re.sub(r'\d+(?:[.,]\d+)?\s*(?:тг|₸)[^\d]*', '', product_line)
-        product_line = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product_line, flags=re.IGNORECASE)
-        product = re.sub(r'\s+', ' ', product_line).strip()
+        # Название товара
+        product = re.sub(r'^\d+\s+', '', line)
+        product = re.sub(r'\s+\d{3,6}\s*$', '', product)
+        product = re.sub(r'\d+\s*(?:тг|₸)', '', product)
+        product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product)
+        product = re.sub(r'\s+', ' ', product).strip()
         
-        if not product or len(product) < 3:
-            continue
-        
-        quantity = 1
-        unit = "шт"
-        
-        kg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*кг', line, re.IGNORECASE)
-        g_match = re.search(r'(\d+(?:[.,]\d+)?)\s*г', line, re.IGNORECASE)
-        l_match = re.search(r'(\d+(?:[.,]\d+)?)\s*л', line, re.IGNORECASE)
-        
-        if kg_match:
-            quantity = float(kg_match.group(1).replace(',', '.'))
-            if g_match:
-                quantity += float(g_match.group(1).replace(',', '.')) / 1000
-            unit = "кг"
-        elif g_match:
-            quantity = float(g_match.group(1).replace(',', '.')) / 1000
-            unit = "кг"
-        elif l_match:
-            quantity = float(l_match.group(1).replace(',', '.'))
-            unit = "л"
-        
-        price_per_unit = 0
-        price_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:тг|₸)', line)
-        if price_match:
-            price_val = float(price_match.group(1).replace(',', '.'))
-            per_kg = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*кг', line, re.IGNORECASE)
-            per_l = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*л', line, re.IGNORECASE)
-            
-            if per_kg:
-                qty = float(per_kg.group(1).replace(',', '.'))
-                price_per_unit = round(price_val / qty, 2)
-            elif per_l:
-                qty = float(per_l.group(1).replace(',', '.'))
-                price_per_unit = round(price_val / qty, 2)
-            else:
-                price_per_unit = price_val
-        
-        purchases.append({
-            "Товар": product,
-            "Цена за ед.": price_per_unit,
-            "Количество": quantity,
-            "Единица": unit,
-            "Сумма": total
-        })
+        if product and len(product) > 2 and total > 0:
+            purchases.append({
+                "Товар": product,
+                "Сумма": total
+            })
     
-    unique_purchases = []
-    seen = set()
-    for p in purchases:
-        if p["Товар"] not in seen:
-            seen.add(p["Товар"])
-            unique_purchases.append(p)
-    
-    return unique_purchases
+    return purchases
 
 def generate_report(df, period_name):
     if df.empty:
@@ -267,6 +219,7 @@ if df.empty:
     df = pd.DataFrame(columns=["Дата", "Товар", "Цена за ед.", "Количество", "Единица", "Сумма", "Поставщик", "Категория", "Примечание"])
     save_data(df)
 
+# === БОКОВАЯ ПАНЕЛЬ ===
 with st.sidebar:
     st.markdown("### 📅 Период")
     period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
@@ -333,52 +286,39 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # === ЗАГРУЗКА DOCX ===
-    st.markdown("### 📎 Загрузить DOCX (Word)")
-    uploaded_docx = st.file_uploader("Файл .docx с закупками", type=["docx"])
+    # === ВСТАВКА ТЕКСТА ===
+    st.markdown("### 📝 Вставить текст из документа")
+    st.info("Скопируйте текст из Word-файла и вставьте сюда")
     
-    if uploaded_docx is not None:
-        try:
-            import docx
-            doc = docx.Document(uploaded_docx)
-            full_text = []
-            for para in doc.paragraphs:
-                text = para.text.strip()
-                if text:
-                    full_text.append(text)
-            text = '\n'.join(full_text)
-            with st.expander("Просмотр текста"):
-                st.text(text[:1000] + "..." if len(text) > 1000 else text)
-            if st.button("📊 Распарсить и добавить из DOCX"):
-                purchases = parse_docx_purchases(text)
-                if purchases:
-                    added = 0
-                    for p in purchases:
-                        new_row = pd.DataFrame([{
-                            "Дата": datetime.now().strftime("%d.%m.%Y"),
-                            "Товар": p["Товар"],
-                            "Цена за ед.": p["Цена за ед."],
-                            "Количество": p["Количество"],
-                            "Единица": p["Единица"],
-                            "Сумма": p["Сумма"],
-                            "Поставщик": "Замира",
-                            "Категория": detect_category(p["Товар"]),
-                            "Примечание": ""
-                        }])
-                        df = pd.concat([df, new_row], ignore_index=True)
-                        added += 1
-                    if added > 0:
-                        save_data(df)
-                        st.success(f"✅ Добавлено {added} позиций из DOCX!")
-                        st.rerun()
-                    else:
-                        st.error("Не удалось распарсить данные")
+    manual_text = st.text_area("Вставьте текст с закупками:", height=200)
+    
+    if st.button("📊 Обработать текст", key="parse_manual"):
+        if manual_text:
+            purchases = parse_simple_text(manual_text)
+            if purchases:
+                added = 0
+                for p in purchases:
+                    new_row = pd.DataFrame([{
+                        "Дата": datetime.now().strftime("%d.%m.%Y"),
+                        "Товар": p["Товар"],
+                        "Цена за ед.": p.get("Цена за ед.", 0),
+                        "Количество": p.get("Количество", 1),
+                        "Единица": p.get("Единица", "шт"),
+                        "Сумма": p["Сумма"],
+                        "Поставщик": "Замира",
+                        "Категория": detect_category(p["Товар"]),
+                        "Примечание": ""
+                    }])
+                    df = pd.concat([df, new_row], ignore_index=True)
+                    added += 1
+                if added > 0:
+                    save_data(df)
+                    st.success(f"✅ Добавлено {added} позиций!")
+                    st.rerun()
                 else:
-                    st.error("Не найдено данных в файле")
-        except ImportError:
-            st.error("Установите python-docx: pip install python-docx")
-        except Exception as e:
-            st.error(f"Ошибка: {e}")
+                    st.error("Не удалось распознать данные")
+            else:
+                st.error("Не найдено данных в тексте")
     
     st.markdown("---")
     
@@ -416,6 +356,7 @@ with st.sidebar:
                 st.success("✅ Добавлено!")
                 st.rerun()
 
+# === ФИЛЬТРАЦИЯ ===
 if not df.empty and "Дата" in df.columns:
     df["Дата_парс"] = pd.to_datetime(df["Дата"], format="%d.%m.%Y", errors="coerce")
     today = datetime.now().date()
@@ -430,6 +371,7 @@ if not df.empty and "Дата" in df.columns:
 else:
     filtered = df
 
+# === МЕТРИКИ ===
 c1, c2, c3, c4 = st.columns(4)
 if not filtered.empty:
     c1.metric("💰 Расходы", f"{filtered['Сумма'].sum():,.0f} ₸")
@@ -444,6 +386,7 @@ else:
 
 st.markdown("---")
 
+# === КНОПКИ ОТЧЁТОВ ===
 if not filtered.empty:
     col_r1, col_r2, col_r3 = st.columns(3)
     with col_r1:
@@ -471,6 +414,8 @@ if not filtered.empty:
             st.download_button("📥 Скачать отчёт (Excel)", output.getvalue(), f"отчет_{datetime.now().strftime('%Y-%m-%d')}.xlsx", use_container_width=True)
 
 st.markdown("---")
+
+# === ВКЛАДКИ ===
 tab1, tab2, tab3, tab4 = st.tabs(["📊 По дням", "🍽️ По категориям", "📦 По товарам", "📈 Отчёты"])
 
 with tab1:
@@ -500,15 +445,15 @@ with tab3:
 with tab4:
     if "report" in st.session_state and st.session_state.report:
         r = st.session_state.report
-        st.subheader("Сводка")
+        st.subheader("📊 Сводка")
         st.dataframe(r["summary"], use_container_width=True)
-        st.subheader("Расходы по категориям")
+        st.subheader("📈 Расходы по категориям")
         st.dataframe(r["by_category"], use_container_width=True)
-        st.subheader("Топ-10 товаров")
+        st.subheader("🏆 Топ-10 товаров")
         st.dataframe(r["top_products"], use_container_width=True)
-        st.subheader("Расходы по поставщикам")
+        st.subheader("🏪 Расходы по поставщикам")
         st.dataframe(r["by_supplier"], use_container_width=True)
-        st.subheader("ABC-анализ")
+        st.subheader("📋 ABC-анализ")
         st.dataframe(r["abc"][["Товар", "Сумма", "Доля", "Категория"]], use_container_width=True)
         abc_chart = r["abc"].groupby("Категория")["Сумма"].sum().reset_index()
         if not abc_chart.empty:
@@ -516,6 +461,6 @@ with tab4:
             fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Нажмите 'Сформировать отчёт' для просмотра аналитики")
+        st.info("📭 Нажмите 'Сформировать отчёт' для просмотра аналитики")
 
 st.caption("💾 Данные в Google Sheets | Отчёты можно выгрузить в Excel или Google Sheets")
