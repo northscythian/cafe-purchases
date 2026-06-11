@@ -199,8 +199,9 @@ def send_report_to_sheets(df, period_name):
         st.error(f"Ошибка: {e}")
         return False
 
+st.markdown("""
 <style>
-    /* АДАПТИВНАЯ ТЕМА — подстраивается под систему */
+    /* АДАПТИВНАЯ ТЕМА - подстраивается под систему */
     
     /* Светлая тема (по умолчанию) */
     .stApp {
@@ -211,22 +212,19 @@ def send_report_to_sheets(df, period_name):
         color: #212529;
     }
     
-    /* Тёмная тема — автоматически срабатывает, если у пользователя включена тёмная тема ОС */
-    @media (prefers-color-scheme: dark) {
-        .stApp {
-            background: #1a1a1a;
-        }
-        h1, h2, h3, h4, p, li, .stMarkdown, label {
-            color: #f0f0f0;
-        }
-    }
-    
-    /* Остальные стили с использованием переменных */
     div[data-testid="stMetric"] {
-        background: rgba(128, 128, 128, 0.1);
+        background: rgba(0, 0, 0, 0.05);
         border-radius: 20px;
         padding: 20px;
-        border: 1px solid rgba(128, 128, 128, 0.3);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    div[data-testid="stMetric"] label {
+        color: #212529 !important;
+    }
+    
+    div[data-testid="stMetric"] div {
+        color: #212529 !important;
     }
     
     .stButton > button {
@@ -239,7 +237,76 @@ def send_report_to_sheets(df, period_name):
         background: #4a90e2 !important;
         color: white !important;
     }
+    
+    .stDataFrame td {
+        color: #212529 !important;
+    }
+    
+    /* Тёмная тема - автоматически срабатывает, если у пользователя включена тёмная тема */
+    @media (prefers-color-scheme: dark) {
+        .stApp {
+            background: #1a1a1a;
+        }
+        h1, h2, h3, h4, p, li, .stMarkdown, label {
+            color: #f0f0f0;
+        }
+        div[data-testid="stMetric"] {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        div[data-testid="stMetric"] label {
+            color: #f0f0f0 !important;
+        }
+        div[data-testid="stMetric"] div {
+            color: #f0f0f0 !important;
+        }
+        .stDataFrame td {
+            color: #f0f0f0 !important;
+        }
+        .stDataFrame {
+            background: #2a2a2a;
+        }
+    }
+    
+    /* Общие стили */
+    .stButton > button:hover {
+        transform: scale(1.02);
+        background: #5a9ee2;
+    }
+    
+    .stTextInput > div > div > input, 
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > select {
+        border-radius: 15px;
+        border: 1px solid #ccc;
+        font-size: 16px;
+    }
+    
+    .stDataFrame {
+        border-radius: 15px;
+        border: 1px solid #ddd;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: rgba(0, 0, 0, 0.05);
+        border-radius: 30px;
+        padding: 5px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 25px;
+        padding: 8px 20px;
+        font-weight: bold;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #4a90e2 !important;
+        color: white !important;
+    }
 </style>
+""", unsafe_allow_html=True)
 
 st.title("📦 Учет закупок кафе")
 st.caption("Данные сохраняются в Google Sheets")
