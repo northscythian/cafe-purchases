@@ -81,6 +81,7 @@ def detect_category(product):
                 return cat
     return "Прочее"
 
+# === ПАРСИНГ ===
 def parse_price_per_unit(price_str):
     price_str = str(price_str).lower().strip()
     main_price = re.search(r'(\d+(?:[.,]\d+)?)\s*тг', price_str)
@@ -124,6 +125,99 @@ def parse_quantity(qty_str):
     if num_match:
         return float(num_match.group(1).replace(',', '.')), "шт"
     return 1, "шт"
+
+def parse_docx_purchases(text):
+    purchases = []
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('№') or line.startswith('--') or 'Товар' in line or 'Цена' in line:
+            continue
+        
+        parts = line.split()
+        if not parts:
+            continue
+        
+        if parts[0].isdigit():
+            product_parts = []
+            price_idx = -1
+            
+            for i in range(1, len(parts)):
+                if re.search(r'\d+', parts[i]) and (i+1 < len(parts) and ('тг' in parts[i+1] or '₸' in parts[i+1] or 'тг' in parts[i])):
+                    price_idx = i
+                    break
+                product_parts.append(parts[i])
+            
+            product = ' '.join(product_parts).strip()
+            
+            total = 0
+            for i in range(len(parts)-1, -1, -1):
+                if re.search(r'^\d+$', parts[i]):
+                    total = int(parts[i])
+                    break
+            
+            if total == 0:
+                sum_match = re.search(r'(\d{4,6})$', line)
+                if sum_match:
+                    total = int(sum_match.group(1))
+            
+            if product and total > 0:
+                price_per_unit = 0
+                price_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:тг|₸)', line)
+                if price_match:
+                    price_val = float(price_match.group(1).replace(',', '.'))
+                    if 'за' in line and 'кг' in line:
+                        kg_match = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*кг', line)
+                        if kg_match:
+                            qty = float(kg_match.group(1).replace(',', '.'))
+                            price_per_unit = round(price_val / qty, 2)
+                        else:
+                            price_per_unit = price_val
+                    elif 'за' in line and 'л' in line:
+                        l_match = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*л', line)
+                        if l_match:
+                            qty = float(l_match.group(1).replace(',', '.'))
+                            price_per_unit = round(price_val / qty, 2)
+                        else:
+                            price_per_unit = price_val
+                    else:
+                        price_per_unit = price_val
+                
+                quantity = 1
+                unit = "шт"
+                
+                kg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*кг', line)
+                g_match = re.search(r'(\d+(?:[.,]\d+)?)\s*г', line)
+                l_match = re.search(r'(\d+(?:[.,]\d+)?)\s*л', line)
+                pcs_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:шт|штук|пачк|упаковк|бутылк)', line)
+                
+                if kg_match:
+                    quantity = float(kg_match.group(1).replace(',', '.'))
+                    if g_match:
+                        quantity += float(g_match.group(1).replace(',', '.')) / 1000
+                    unit = "кг"
+                elif g_match:
+                    quantity = float(g_match.group(1).replace(',', '.')) / 1000
+                    unit = "кг"
+                elif l_match:
+                    quantity = float(l_match.group(1).replace(',', '.'))
+                    unit = "л"
+                elif pcs_match:
+                    quantity = float(pcs_match.group(1).replace(',', '.'))
+                    unit = "шт"
+                
+                purchases.append({
+                    "Товар": product,
+                    "Цена за ед.": price_per_unit,
+                    "Количество": quantity,
+                    "Единица": unit,
+                    "Сумма": total
+                })
+    
+    return purchases
 
 def generate_report(df, period_name):
     if df.empty:
@@ -311,7 +405,6 @@ with st.sidebar:
     period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
     st.markdown("---")
     
-    # === ЗАГРУЗКА EXCEL ===
     st.markdown("### 📎 Загрузить Excel")
     uploaded_file = st.file_uploader("Файл .xlsx или .xls", type=["xlsx", "xls"])
     
@@ -321,7 +414,7 @@ with st.sidebar:
             st.success(f"Загружено: {len(df_upload)} строк")
             with st.expander("Просмотр данных"):
                 st.dataframe(df_upload.head(10), use_container_width=True)
-            if st.button("📊 Добавить данные"):
+            if st.button("📊 Добавить данные из Excel"):
                 added = 0
                 for idx, row in df_upload.iterrows():
                     try:
@@ -372,7 +465,55 @@ with st.sidebar:
     
     st.markdown("---")
     
-    if st.button("📋 Загрузить 59 позиций", use_container_width=True):
+    st.markdown("### 📎 Загрузить DOCX (Word)")
+    uploaded_docx = st.file_uploader("Файл .docx с закупками", type=["docx"])
+    
+    if uploaded_docx is not None:
+        try:
+            import docx
+            doc = docx.Document(uploaded_docx)
+            full_text = []
+            for para in doc.paragraphs:
+                text = para.text.strip()
+                if text:
+                    full_text.append(text)
+            text = '\n'.join(full_text)
+            with st.expander("Просмотр текста"):
+                st.text(text[:1000] + "..." if len(text) > 1000 else text)
+            if st.button("📊 Распарсить и добавить из DOCX"):
+                purchases = parse_docx_purchases(text)
+                if purchases:
+                    added = 0
+                    for p in purchases:
+                        new_row = pd.DataFrame([{
+                            "Дата": datetime.now().strftime("%d.%m.%Y"),
+                            "Товар": p["Товар"],
+                            "Цена за ед.": p["Цена за ед."],
+                            "Количество": p["Количество"],
+                            "Единица": p["Единица"],
+                            "Сумма": p["Сумма"],
+                            "Поставщик": "Замира",
+                            "Категория": detect_category(p["Товар"]),
+                            "Примечание": ""
+                        }])
+                        df = pd.concat([df, new_row], ignore_index=True)
+                        added += 1
+                    if added > 0:
+                        save_data(df)
+                        st.success(f"✅ Добавлено {added} позиций из DOCX!")
+                        st.rerun()
+                    else:
+                        st.error("Не удалось распарсить данные")
+                else:
+                    st.error("Не найдено данных в файле")
+        except ImportError:
+            st.error("Установите python-docx: pip install python-docx")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+    
+    st.markdown("---")
+    
+    if st.button("📋 Загрузить 59 позиций (встроенные)", use_container_width=True):
         purchases = get_all_purchases()
         for p in purchases:
             p["Дата"] = datetime.now().strftime("%d.%m.%Y")
