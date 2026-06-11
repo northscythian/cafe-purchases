@@ -81,99 +81,38 @@ def detect_category(product):
                 return cat
     return "Прочее"
 
-# === ПАРСИНГ ===
-def parse_price_per_unit(price_str):
-    price_str = str(price_str).lower().strip()
-    main_price = re.search(r'(\d+(?:[.,]\d+)?)\s*тг', price_str)
-    if not main_price:
-        main_price = re.search(r'(\d+(?:[.,]\d+)?)\s*₸', price_str)
-    if not main_price:
-        return 0, "шт"
-    price = float(main_price.group(1).replace(',', '.'))
-    per_kg = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*кг', price_str)
-    if per_kg:
-        qty = float(per_kg.group(1).replace(',', '.'))
-        return round(price / qty, 2), "кг"
-    per_l = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*л', price_str)
-    if per_l:
-        qty = float(per_l.group(1).replace(',', '.'))
-        return round(price / qty, 2), "л"
-    if "/кг" in price_str or "тг/кг" in price_str:
-        return price, "кг"
-    elif "/л" in price_str or "тг/л" in price_str:
-        return price, "л"
-    return price, "шт"
-
-def parse_quantity(qty_str):
-    qty_str = str(qty_str).lower().strip()
-    kg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*кг', qty_str)
-    g_match = re.search(r'(\d+(?:[.,]\d+)?)\s*г', qty_str)
-    if kg_match or g_match:
-        total = 0
-        if kg_match:
-            total += float(kg_match.group(1).replace(',', '.'))
-        if g_match:
-            total += float(g_match.group(1).replace(',', '.')) / 1000
-        return round(total, 3), "кг"
-    l_match = re.search(r'(\d+(?:[.,]\d+)?)\s*л', qty_str)
-    if l_match:
-        return float(l_match.group(1).replace(',', '.')), "л"
-    pcs_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:шт|штук|пачк|упаковк|бутылк|банк|мешк|кусочк|лоток|ведер|пакет|пучк)', qty_str)
-    if pcs_match:
-        return float(pcs_match.group(1).replace(',', '.')), "шт"
-    num_match = re.search(r'(\d+(?:[.,]\d+)?)', qty_str)
-    if num_match:
-        return float(num_match.group(1).replace(',', '.')), "шт"
-    return 1, "шт"
-
+# === ПАРСИНГ DOCX ===
 def parse_docx_purchases(text):
-    """Улучшенный парсер для вашего формата DOCX"""
     purchases = []
     lines = text.split('\n')
     
-    # Регулярное выражение для поиска строк с данными
-    # Ищем: номер, название товара, сумму в конце
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        
-        # Пропускаем заголовки и разделители
         if line.startswith('№') or line.startswith('--') or 'Товар' in line or 'Цена' in line:
             continue
-        
-        # Пропускаем строки с только числами или короткие строки
         if len(line) < 10:
             continue
         
-        # Ищем сумму в конце строки (последнее число)
         numbers = re.findall(r'(\d{3,6})', line)
         if not numbers:
             continue
         
-        total = int(numbers[-1])  # Берём последнее число как сумму
+        total = int(numbers[-1])
         
-        # Извлекаем название товара
-        # Удаляем номер в начале
         product_line = re.sub(r'^\d+\s+', '', line)
-        # Удаляем сумму в конце
         product_line = re.sub(r'\s+\d{3,6}\s*$', '', product_line)
-        # Удаляем цену (числа с тг/₸)
         product_line = re.sub(r'\d+(?:[.,]\d+)?\s*(?:тг|₸)[^\d]*', '', product_line)
-        # Удаляем количество (числа с кг/г/л/шт)
         product_line = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product_line, flags=re.IGNORECASE)
-        # Очищаем от лишних пробелов
         product = re.sub(r'\s+', ' ', product_line).strip()
         
-        # Если название слишком короткое или пустое — пропускаем
         if not product or len(product) < 3:
             continue
         
-        # Определяем количество и единицу
         quantity = 1
         unit = "шт"
         
-        # Ищем количество в кг
         kg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*кг', line, re.IGNORECASE)
         g_match = re.search(r'(\d+(?:[.,]\d+)?)\s*г', line, re.IGNORECASE)
         l_match = re.search(r'(\d+(?:[.,]\d+)?)\s*л', line, re.IGNORECASE)
@@ -190,12 +129,10 @@ def parse_docx_purchases(text):
             quantity = float(l_match.group(1).replace(',', '.'))
             unit = "л"
         
-        # Определяем цену за единицу
         price_per_unit = 0
         price_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:тг|₸)', line)
         if price_match:
             price_val = float(price_match.group(1).replace(',', '.'))
-            # Если есть "за ... кг" или "за ... л"
             per_kg = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*кг', line, re.IGNORECASE)
             per_l = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*л', line, re.IGNORECASE)
             
@@ -216,12 +153,11 @@ def parse_docx_purchases(text):
             "Сумма": total
         })
     
-    # Удаляем дубликаты по названию товара (оставляем первый)
     unique_purchases = []
-    seen_products = set()
+    seen = set()
     for p in purchases:
-        if p["Товар"] not in seen_products:
-            seen_products.add(p["Товар"])
+        if p["Товар"] not in seen:
+            seen.add(p["Товар"])
             unique_purchases.append(p)
     
     return unique_purchases
@@ -311,82 +247,6 @@ def send_report_to_sheets(df, period_name):
         st.error(f"Ошибка: {e}")
         return False
 
-def get_all_purchases():
-    raw_data = [
-        ("Масло для фритюра", "7300 тг за 7 л", "3 бутылки", 21900),
-        ("Дрожжи", "220 тг за пачку 50 г", "1 пачка", 220),
-        ("Масло растительное", "3800 тг за 5 л", "4 бутылки", 15200),
-        ("Сыр сметанковый", "2500 тг/кг", "4 кг 300 г", 10750),
-        ("Мука", "7950 тг за 25 кг", "2 мешка", 15900),
-        ("Сметана Умит", "440 тг за 500 г", "5 упаковок", 2200),
-        ("Сыр Джугас 40%", "3500 тг за 180 г", "2 кусочка", 7000),
-        ("Моцарелла", "3400 тг/кг", "2 кг", 6800),
-        ("Моцарелла (другой бренд)", "3000 тг/кг", "4 кг", 12000),
-        ("Крылышки куриные", "1550 тг/кг", "15 кг 915 г", 24668),
-        ("Куриное филе", "1500 тг/кг", "14 кг", 21000),
-        ("Колбаса Марьям", "1850 тг/кг", "2 кг 180 г", 4033),
-        ("Соус Барбекю", "1600 тг за 0,5 л", "1 упаковка", 1600),
-        ("Масло растительное", "3700 тг за 5 л", "2 бутылки", 7400),
-        ("Томатная паста", "880 тг за 1 л", "3 банки", 2640),
-        ("Колбаса Марьям", "1300 тг/кг", "3 кг 940 г", 5122),
-        ("Сыр сметанковый", "2500 тг/кг", "5 кг 860 г", 14650),
-        ("Моцарелла", "2600 тг/кг", "4 кг", 10400),
-        ("Сметана", "2000 тг за 2 л", "2 л", 2000),
-        ("Лук", "230 тг/кг", "8 кг 430 г", 1940),
-        ("Чеснок", "800 тг/кг", "1 кг 14 г", 811),
-        ("Чесночные дудки", "800 тг/кг", "610 г", 485),
-        ("Сельдерей", "180 тг за пучок", "2 пучка", 360),
-        ("Помидоры", "550 тг/кг", "2 кг 590 г", 1450),
-        ("Говядина", "3800 тг/кг", "1 кг 800 г", 6850),
-        ("Майонез", "1150 тг за 1 л", "5 ведер", 5750),
-        ("Кетчуп", "950 тг за 1 л", "2 ведра", 1900),
-        ("Кетчуп тетрапак", "715 тг за 0,5 л", "5 шт", 3575),
-        ("Лаваш", "650 тг за пакет", "4 пакета", 2600),
-        ("Помидоры", "550 тг/кг", "2,5 кг", 1375),
-        ("Огурцы", "550 тг/кг", "2,5 кг", 1375),
-        ("Сельдерей", "150 тг за пучок", "2 пучка", 300),
-        ("Морковь", "350 тг/кг", "2 кг 700 г", 945),
-        ("Лук", "200 тг/кг", "38 кг 100 г", 7620),
-        ("Свежий перец", "1100 тг/кг", "2 кг 95 г", 2305),
-        ("Морковь", "380 тг/кг", "2 кг", 760),
-        ("Джусай", "175 тг за пучок", "1 пучок", 175),
-        ("Зеленый лук", "150 тг за пучок", "1 пучок", 150),
-        ("Укроп", "100 тг за пучок", "1 пучок", 100),
-        ("Картофель", "320 тг/кг", "8 кг 775 г", 2810),
-        ("Помидоры", "780 тг/кг", "2 кг 64 г", 1609),
-        ("Огурцы", "400 тг/кг", "2 кг 400 г", 960),
-        ("Яйца", "1650 тг за лоток", "30 шт", 1650),
-        ("Молоко", "450 тг/л", "2 л", 900),
-        ("Томатная паста", "800 тг за 1 л", "2 банки", 1600),
-        ("Говядина", "3793 тг/кг", "5 кг 730 г", 21735),
-        ("Говядина", "3677 тг/кг", "5 кг 44 г", 18549),
-        ("Картофель фри", "2173 тг/кг", "8 кг", 17384),
-        ("Черный перец", "5586 тг/кг", "1 кг", 5586),
-        ("Чеснок сушеный", "5027 тг/кг", "2 кг", 10055),
-        ("Красный перец", "1787 тг/кг", "2 кг", 3575),
-        ("Орегано", "6704 тг/кг", "1 кг", 6704),
-        ("Базилик", "5586 тг/кг", "1 кг", 5586),
-        ("Универсальная приправа", "5028 тг/кг", "1 кг", 5028),
-        ("Китайский уксус", "3966 тг за 3 л", "1 бутылка", 3966),
-        ("Соевый соус", "1117 тг за 0,5 л", "2 бутылки", 2234),
-        ("Лавровый лист", "500 тг за упаковку", "1 упаковка", 500),
-        ("Помидоры", "600 тг/кг", "2 кг 430 г", 1458),
-        ("Огурцы", "по записи сумма 1311 тг", "2 кг 185 г", 1311),
-    ]
-    purchases = []
-    for product, price_str, qty_str, total in raw_data:
-        price_per_unit, _ = parse_price_per_unit(price_str)
-        quantity, unit = parse_quantity(qty_str)
-        purchases.append({
-            "Товар": product,
-            "Цена за ед.": price_per_unit,
-            "Количество": quantity,
-            "Единица": unit,
-            "Сумма": total,
-            "Категория": detect_category(product),
-        })
-    return purchases
-
 st.markdown("""
 <style>
     .stApp { background: linear-gradient(135deg, #2d2b2a 0%, #1a1a1a 100%); }
@@ -412,6 +272,7 @@ with st.sidebar:
     period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
     st.markdown("---")
     
+    # === ЗАГРУЗКА EXCEL ===
     st.markdown("### 📎 Загрузить Excel")
     uploaded_file = st.file_uploader("Файл .xlsx или .xls", type=["xlsx", "xls"])
     
@@ -472,6 +333,7 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # === ЗАГРУЗКА DOCX ===
     st.markdown("### 📎 Загрузить DOCX (Word)")
     uploaded_docx = st.file_uploader("Файл .docx с закупками", type=["docx"])
     
@@ -520,21 +382,7 @@ with st.sidebar:
     
     st.markdown("---")
     
-    if st.button("📋 Загрузить 59 позиций (встроенные)", use_container_width=True):
-        purchases = get_all_purchases()
-        for p in purchases:
-            p["Дата"] = datetime.now().strftime("%d.%m.%Y")
-            p["Поставщик"] = "Замира"
-            p["Примечание"] = ""
-        new_df = pd.DataFrame(purchases)
-        cols_order = ["Дата", "Товар", "Категория", "Цена за ед.", "Количество", "Единица", "Сумма", "Поставщик", "Примечание"]
-        new_df = new_df[cols_order]
-        df = pd.concat([df, new_df], ignore_index=True)
-        save_data(df)
-        st.success(f"✅ Загружено {len(purchases)} позиций!")
-        st.rerun()
-    
-    st.markdown("---")
+    # === РУЧНОЕ ДОБАВЛЕНИЕ ===
     st.markdown("### ➕ Ручное добавление")
     with st.form("add_purchase"):
         product = st.text_input("Товар")
