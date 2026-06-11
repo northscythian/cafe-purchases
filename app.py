@@ -116,7 +116,6 @@ def parse_my_docx(text):
                 continue
             
             # Собираем название товара (всё между номером и суммой)
-            # Находим индекс последнего числа (суммы)
             last_num_idx = -1
             for i in range(len(parts)-1, -1, -1):
                 if parts[i].isdigit() and len(parts[i]) >= 3:
@@ -126,7 +125,6 @@ def parse_my_docx(text):
             if last_num_idx <= 1:
                 continue
             
-            # Название — это всё от индекса 1 до last_num_idx-1
             product_parts = parts[1:last_num_idx]
             product = ' '.join(product_parts).strip()
             
@@ -162,14 +160,12 @@ def parse_simple_text(text):
         if not line:
             continue
         
-        # Ищем числа (потенциальные суммы)
         numbers = re.findall(r'\b(\d{3,6})\b', line)
         if not numbers:
             continue
         
         total = int(numbers[-1])
         
-        # Название товара — всё, что перед суммой
         product = re.sub(r'^\d+\s+', '', line)
         product = re.sub(r'\s+\d{3,6}\s*$', '', product)
         product = re.sub(r'\d+\s*(?:тг|₸)', '', product)
@@ -383,7 +379,7 @@ with st.sidebar:
                         "Единица": p.get("Единица", "шт"),
                         "Сумма": p["Сумма"],
                         "Поставщик": "Замира",
-                        "Категория": detect_category(p["Товаر"]),
+                        "Категория": detect_category(p["Товар"]),
                         "Примечание": ""
                     }])
                     df = pd.concat([df, new_row], ignore_index=True)
