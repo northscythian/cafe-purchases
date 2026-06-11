@@ -201,126 +201,13 @@ def send_report_to_sheets(df, period_name):
 
 st.markdown("""
 <style>
-    .stApp { background: linear-gradient(135deg, #0d2b0d 0%, #051a05 100%); }
-    
-    div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #1a3a1a, #0f2a0f);
-        border-radius: 20px;
-        padding: 20px;
-        border: 1px solid #2ecc71;
-        transition: transform 0.3s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        transform: translateY(-5px);
-    }
-    div[data-testid="stMetric"] label {
-        color: #2ecc71 !important;
-        font-size: 16px !important;
-        font-weight: bold !important;
-    }
-    div[data-testid="stMetric"] div {
-        color: #58d68d !important;
-        font-size: 32px !important;
-        font-weight: bold !important;
-    }
-    
-    h1, h2, h3, h4 {
-        color: #58d68d !important;
-        font-family: 'Segoe UI', 'Arial', sans-serif;
-    }
-    h1 {
-        border-bottom: 3px solid #2ecc71;
-        display: inline-block;
-        padding-bottom: 10px;
-    }
-    
-    [data-testid="stSidebar"] {
-        background: #0a1a0a;
-        border-right: 2px solid #2ecc71;
-    }
-    [data-testid="stSidebar"] * {
-        color: #58d68d !important;
-    }
-    [data-testid="stSidebar"] .stSelectbox label {
-        color: #2ecc71 !important;
-        font-weight: bold;
-    }
-    
-    .stButton > button {
-        background: linear-gradient(135deg, #2ecc71, #27ae60);
-        color: white;
-        border: none;
-        border-radius: 30px;
-        padding: 12px 28px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
-    .stButton > button:hover {
-        transform: scale(1.02);
-        background: linear-gradient(135deg, #3edd81, #2ecc71);
-        color: white;
-    }
-    
-    .stTextInput > div > div > input, 
-    .stNumberInput > div > div > input,
-    .stTextArea > div > div > textarea,
-    .stSelectbox > div > div > select {
-        background-color: #0f1a0f;
-        border-radius: 15px;
-        border: 1px solid #2ecc71;
-        font-size: 16px;
-        color: #58d68d !important;
-    }
-    .stTextInput label, .stNumberInput label, .stTextArea label {
-        color: #2ecc71 !important;
-        font-weight: bold;
-    }
-    
-    .stDataFrame {
-        background: #0f1a0f;
-        border-radius: 15px;
-        border: 1px solid #2ecc71;
-    }
-    .stDataFrame th {
-        background: #2ecc71 !important;
-        color: #051a05 !important;
-        font-weight: bold;
-    }
-    .stDataFrame td {
-        color: #58d68d !important;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #0f1a0f;
-        border-radius: 30px;
-        padding: 5px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 25px;
-        padding: 8px 20px;
-        font-weight: bold;
-        color: #58d68d;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #2ecc71 !important;
-        color: #051a05 !important;
-    }
-    
-    .stInfo {
-        background-color: #0f1a0f !important;
-        color: #2ecc71 !important;
-    }
-    
-    [data-testid="stMetricValue"] {
-        color: #58d68d !important;
-        font-size: 36px !important;
-        font-weight: bold !important;
-    }
-    
-    [data-testid="stMetricDelta"] {
-        color: #2ecc71 !important;
-    }
+    .stApp { background: linear-gradient(135deg, #2d2b2a 0%, #1a1a1a 100%); }
+    div[data-testid="stMetric"] { background: linear-gradient(135deg, #3d3a38, #2c2a28); border-radius: 20px; padding: 20px; border: 1px solid #d4a373; }
+    h1, h2, h3, h4 { color: #d4a373 !important; }
+    .stButton > button { background: linear-gradient(135deg, #d4a373, #b5835a); color: white; border-radius: 30px; }
+    .stDataFrame { background: #2a2a2a; border-radius: 15px; border: 1px solid #d4a373; }
+    .stDataFrame th { background: #d4a373 !important; color: #1a1a1a !important; }
+    .stDataFrame td { color: white !important; }
 </style>
 """, unsafe_allow_html=True)
 
