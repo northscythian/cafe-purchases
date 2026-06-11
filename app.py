@@ -121,7 +121,82 @@ def parse_quantity(qty_str):
     
     return 1, "шт"
 
-# === ВСЕ 59 ПОЗИЦИЙ (РАССЧИТАНЫ АВТОМАТИЧЕСКИ) ===
+# === ФУНКЦИЯ ДЛЯ ОБРАБОТКИ ЗАГРУЖЕННОГО EXCEL ===
+def process_uploaded_excel(df_upload):
+    """Преобразует загруженный Excel в формат приложения"""
+    # Стандартизируем названия колонок
+    column_mapping = {
+        "дата": "Дата",
+        "товар": "Товар",
+        "название": "Товар",
+        "продукт": "Товар",
+        "цена за ед": "Цена за ед.",
+        "цена за кг": "Цена за ед.",
+        "цена": "Цена за ед.",
+        "количество": "Количество",
+        "кол-во": "Количество",
+        "единица": "Единица",
+        "ед": "Единица",
+        "сумма": "Сумма",
+        "поставщик": "Поставщик",
+        "категория": "Категория",
+        "примечание": "Примечание"
+    }
+    
+    df_upload.columns = df_upload.columns.str.lower()
+    
+    result = pd.DataFrame(columns=["Дата", "Товар", "Цена за ед.", "Количество", "Единица", "Сумма", "Поставщик", "Категория", "Примечание"])
+    
+    for idx, row in df_upload.iterrows():
+        new_row = {}
+        
+        # Определяем колонки
+        for col in df_upload.columns:
+            for key, target in column_mapping.items():
+                if key in col:
+                    if target == "Дата":
+                        try:
+                            new_row["Дата"] = pd.to_datetime(row[col]).strftime("%d.%m.%Y")
+                        except:
+                            new_row["Дата"] = datetime.now().strftime("%d.%m.%Y")
+                    elif target == "Товар":
+                        new_row["Товар"] = str(row[col]) if pd.notna(row[col]) else ""
+                    elif target == "Цена за ед.":
+                        new_row["Цена за ед."] = float(row[col]) if pd.notna(row[col]) else 0
+                    elif target == "Количество":
+                        new_row["Количество"] = float(row[col]) if pd.notna(row[col]) else 1
+                    elif target == "Единица":
+                        new_row["Единица"] = str(row[col]) if pd.notna(row[col]) else "шт"
+                    elif target == "Сумма":
+                        new_row["Сумма"] = float(row[col]) if pd.notna(row[col]) else 0
+                    elif target == "Поставщик":
+                        new_row["Поставщик"] = str(row[col]) if pd.notna(row[col]) else "Другое"
+                    elif target == "Категория":
+                        new_row["Категория"] = str(row[col]) if pd.notna(row[col]) else ""
+                    elif target == "Примечание":
+                        new_row["Примечание"] = str(row[col]) if pd.notna(row[col]) else ""
+        
+        # Если не удалось определить некоторые поля
+        if "Дата" not in new_row:
+            new_row["Дата"] = datetime.now().strftime("%d.%m.%Y")
+        if "Цена за ед." not in new_row and "Сумма" in new_row and "Количество" in new_row:
+            new_row["Цена за ед."] = new_row["Сумма"] / new_row["Количество"] if new_row["Количество"] > 0 else 0
+        if "Сумма" not in new_row and "Цена за ед." in new_row and "Количество" in new_row:
+            new_row["Сумма"] = new_row["Цена за ед."] * new_row["Количество"]
+        if "Категория" not in new_row or not new_row["Категория"]:
+            new_row["Категория"] = detect_category(new_row.get("Товар", ""))
+        if "Единица" not in new_row:
+            new_row["Единица"] = "шт"
+        if "Поставщик" not in new_row:
+            new_row["Поставщик"] = "Другое"
+        if "Примечание" not in new_row:
+            new_row["Примечание"] = ""
+        
+        result = pd.concat([result, pd.DataFrame([new_row])], ignore_index=True)
+    
+    return result
+
+# === ВСЕ 59 ПОЗИЦИЙ ===
 def get_all_purchases():
     raw_data = [
         ("Масло для фритюра", "7300 тг за 7 л", "3 бутылки", 21900),
@@ -216,12 +291,40 @@ st.caption("Данные сохраняются в Google Sheets")
 
 df = load_data()
 if df.empty:
-    df = get_default_data()
+    df = pd.DataFrame(columns=["Дата", "Товар", "Цена за ед.", "Количество", "Единица", "Сумма", "Поставщик", "Категория", "Примечаение"])
     save_data(df)
 
-# === КНОПКА ЗАГРУЗКИ ВСЕХ 59 ПОЗИЦИЙ ===
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
+# === БОКОВАЯ ПАНЕЛЬ ===
+with st.sidebar:
+    st.markdown("### 📅 Период")
+    period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
+    
+    st.markdown("---")
+    
+    # === ЗАГРУЗКА EXCEL ФАЙЛА ===
+    st.markdown("### 📎 Загрузить Excel файл")
+    uploaded_file = st.file_uploader("Выберите файл .xlsx или .xls", type=["xlsx", "xls"])
+    
+    if uploaded_file is not None:
+        try:
+            df_upload = pd.read_excel(uploaded_file)
+            st.success(f"Файл загружен: {len(df_upload)} строк")
+            
+            if st.button("📊 Обработать и добавить"):
+                processed_df = process_uploaded_excel(df_upload)
+                if not processed_df.empty:
+                    df = pd.concat([df, processed_df], ignore_index=True)
+                    if save_data(df):
+                        st.success(f"✅ Добавлено {len(processed_df)} позиций!")
+                        st.rerun()
+                else:
+                    st.error("Не удалось распознать данные в файле")
+        except Exception as e:
+            st.error(f"Ошибка чтения файла: {e}")
+    
+    st.markdown("---")
+    
+    # === КНОПКА ЗАГРУЗКИ 59 ПОЗИЦИЙ ===
     if st.button("📋 ЗАГРУЗИТЬ ВСЕ 59 ПОЗИЦИЙ", use_container_width=True):
         purchases = get_all_purchases()
         for p in purchases:
@@ -236,12 +339,10 @@ with col2:
         save_data(df)
         st.success(f"✅ Загружено {len(purchases)} позиций!")
         st.rerun()
-
-with st.sidebar:
-    st.markdown("### 📅 Период")
-    period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
     
     st.markdown("---")
+    
+    # === РУЧНОЕ ДОБАВЛЕНИЕ ===
     st.markdown("### ➕ Добавить закупку")
     
     with st.form("add_purchase"):
@@ -278,6 +379,7 @@ with st.sidebar:
                     st.success("Добавлено!")
                     st.rerun()
 
+# === ФИЛЬТРАЦИЯ И ОТОБРАЖЕНИЕ ===
 if not df.empty and "Дата" in df.columns:
     df["Дата_парс"] = pd.to_datetime(df["Дата"], format="%d.%m.%Y", errors="coerce")
     today = datetime.now().date()
@@ -292,6 +394,7 @@ if not df.empty and "Дата" in df.columns:
 else:
     filtered = df
 
+# === МЕТРИКИ ===
 c1, c2, c3, c4 = st.columns(4)
 if not filtered.empty:
     c1.metric("💰 Расходы", f"{filtered['Сумма'].sum():,.0f} ₸")
@@ -306,15 +409,17 @@ else:
 
 st.markdown("---")
 
+# === ГРАФИКИ ===
 if not filtered.empty:
     tab1, tab2, tab3 = st.tabs(["📊 По дням", "🍽️ По категориям", "📋 Список"])
     with tab1:
         if "Дата_парс" in filtered.columns:
             daily = filtered.groupby(filtered["Дата_парс"].dt.date)["Сумма"].sum().reset_index()
             daily.columns = ["Дата", "Сумма"]
-            fig = px.line(daily, x="Дата", y="Сумма", template="plotly_dark", color_discrete_sequence=["#d4a373"])
-            fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True)
+            if not daily.empty:
+                fig = px.line(daily, x="Дата", y="Сумма", template="plotly_dark", color_discrete_sequence=["#d4a373"])
+                fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, use_container_width=True)
     with tab2:
         by_cat = filtered.groupby("Категория")["Сумма"].sum().reset_index()
         fig = px.pie(by_cat, values="Сумма", names="Категория", template="plotly_dark")
@@ -324,6 +429,6 @@ if not filtered.empty:
     with tab3:
         st.dataframe(filtered, use_container_width=True)
 else:
-    st.info("Нет данных. Нажмите 'ЗАГРУЗИТЬ ВСЕ 59 ПОЗИЦИЙ' или добавьте вручную.")
+    st.info("Нет данных. Загрузите Excel файл, нажмите 'ЗАГРУЗИТЬ ВСЕ 59 ПОЗИЦИЙ' или добавьте вручную.")
 
 st.caption("💾 Данные в Google Sheets")
