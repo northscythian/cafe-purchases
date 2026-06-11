@@ -4,7 +4,6 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import json
 
 st.set_page_config(page_title="Учет закупок кафе", page_icon="📦", layout="wide")
 
