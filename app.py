@@ -10,19 +10,19 @@ from io import BytesIO
 st.set_page_config(page_title="Учет закупок кафе", page_icon="📦", layout="wide")
 
 # === ПОДКЛЮЧЕНИЕ К GOOGLE SHEETS ===
-@st.cache_resource
+@st.cache_resource(ttl=3600)
 def get_sheet():
     try:
         creds_dict = st.secrets["google"]
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        sheet = client.open("Кафе_Закупки").sheet1
-        return sheet
+        return client.open("Кафе_Закупки").sheet1
     except Exception as e:
         st.error(f"Ошибка подключения: {e}")
         return None
 
+@st.cache_resource(ttl=3600)
 def get_report_sheet():
     try:
         creds_dict = st.secrets["google"]
@@ -31,10 +31,9 @@ def get_report_sheet():
         client = gspread.authorize(creds)
         workbook = client.open("Кафе_Закупки")
         try:
-            report_sheet = workbook.worksheet("ОТЧЕТЫ")
+            return workbook.worksheet("ОТЧЕТЫ")
         except:
-            report_sheet = workbook.add_worksheet(title="ОТЧЕТЫ", rows="1000", cols="20")
-        return report_sheet
+            return workbook.add_worksheet(title="ОТЧЕТЫ", rows="1000", cols="20")
     except Exception as e:
         st.error(f"Ошибка: {e}")
         return None
@@ -58,32 +57,33 @@ def save_data(df):
     try:
         sheet.clear()
         if not df.empty:
-            sheet.update([df.columns.values.tolist()] + df.values.tolist())
+            df_filled = df.fillna("")
+            sheet.update([df_filled.columns.values.tolist()] + df_filled.values.tolist())
         return True
     except Exception as e:
-        st.error(f"Ошибка: {e}")
+        st.error(f"Ошибка сохранения: {e}")
         return False
 
 # === КАТЕГОРИИ ===
 CATEGORIES = {
-    "Мясо и птица": ["говядина", "куриное филе", "крылышки", "колбаса", "куриные", "марьян"],
+    "Мясо и птица": ["говядина", "куриное филе", "крылышки", "колбаса", "куриные", "марьян", "баранина", "курдюк", "фарш"],
     "Молочные продукты": ["сыр", "моцарелла", "сметана", "молоко", "майонез", "сметанковый", "джугас"],
     "Овощи и зелень": ["лук", "чеснок", "помидоры", "огурцы", "морковь", "перец", "картофель", "укроп", "петрушка", "сельдерей", "джусай", "зеленый лук"],
-    "Бакалея": ["мука", "масло", "кетчуп", "соус", "лаваш", "яйца", "специи", "приправа", "орегано", "базилик", "лавровый лист", "уксус", "соевый соус", "барбекю", "фритюра", "дрожжи", "томатная паста"],
+    "Бакалея": ["мука", "масло", "кетчуп", "соус", "лаваш", "яйца", "специи", "приправа", "орегано", "базилик", "лавровый лист", "уксус", "соевый соус", "барбекю", "фритюра", "дрожжи", "томатная паста", "рис", "зира", "тесто", "макароны"],
     "Прочее": []
 }
 
 def detect_category(product):
+    if not isinstance(product, str):
+        return "Прочее"
     product = product.lower()
     for cat, keywords in CATEGORIES.items():
-        for kw in keywords:
-            if kw in product:
-                return cat
+        if any(kw in product for kw in keywords):
+            return cat
     return "Прочее"
 
-# === ПРОСТОЙ ПАРСЕР ТЕКСТА ===
+# === ПАРСЕР ТЕКСТА ===
 def parse_simple_text(text):
-    """Простой парсер для текста с закупками"""
     purchases = []
     lines = text.split('\n')
     
@@ -92,14 +92,12 @@ def parse_simple_text(text):
         if not line:
             continue
         
-        # Ищем числа (потенциальные суммы)
         numbers = re.findall(r'\b(\d{3,6})\b', line)
         if not numbers:
             continue
         
         total = int(numbers[-1])
         
-        # Название товара
         product = re.sub(r'^\d+\s+', '', line)
         product = re.sub(r'\s+\d{3,6}\s*$', '', product)
         product = re.sub(r'\d+\s*(?:тг|₸)', '', product)
@@ -114,6 +112,7 @@ def parse_simple_text(text):
     
     return purchases
 
+# === ГЕНЕРАЦИЯ ОТЧЁТОВ ===
 def generate_report(df, period_name):
     if df.empty:
         return {}
@@ -134,7 +133,8 @@ def generate_report(df, period_name):
     abc_data["Доля"] = abc_data["Сумма"] / total_rev * 100 if total_rev > 0 else 0
     abc_data.sort_values("Сумма", ascending=False, inplace=True)
     abc_data["Категория"] = abc_data["Доля"].apply(lambda x: "A" if x >= 40 else ("B" if x >= 15 else "C"))
-    report = {
+    
+    return {
         "summary": pd.DataFrame([{
             "Период": period_name,
             "Дата формирования": datetime.now().strftime("%d.%m.%Y %H:%M"),
@@ -149,7 +149,6 @@ def generate_report(df, period_name):
         "daily": daily,
         "abc": abc_data
     }
-    return report
 
 def send_report_to_sheets(df, period_name):
     report_sheet = get_report_sheet()
@@ -199,247 +198,68 @@ def send_report_to_sheets(df, period_name):
         st.error(f"Ошибка: {e}")
         return False
 
+# === CSS СТИЛИ ===
 st.markdown("""
 <style>
-    /* АДАПТИВНАЯ ТЕМА - подстраивается под систему */
+    .stApp { background: #f8f9fa; }
+    h1, h2, h3, h4, p, li, .stMarkdown, label, .stCaption { color: #212529; }
     
-    /* === СВЕТЛАЯ ТЕМА (по умолчанию) === */
-    .stApp {
-        background: #f8f9fa;
-    }
-    
-    /* Текст */
-    h1, h2, h3, h4, p, li, .stMarkdown, label, .stCaption {
-        color: #212529;
-    }
-    
-    /* Метрики */
     div[data-testid="stMetric"] {
-        background: rgba(0, 0, 0, 0.03);
+        background: rgba(0,0,0,0.03);
         border-radius: 20px;
         padding: 20px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        border: 1px solid rgba(0,0,0,0.1);
     }
-    div[data-testid="stMetric"] label {
-        color: #212529 !important;
-    }
-    div[data-testid="stMetric"] div {
-        color: #212529 !important;
-    }
+    div[data-testid="stMetric"] label { color: #212529 !important; }
+    div[data-testid="stMetric"] div { color: #212529 !important; }
     
-    /* Боковая панель */
-    [data-testid="stSidebar"] {
-        background: #f0f0f0;
-        border-right: 1px solid #ddd;
-    }
-    [data-testid="stSidebar"] * {
-        color: #212529 !important;
-    }
+    [data-testid="stSidebar"] { background: #f0f0f0; border-right: 1px solid #ddd; }
+    [data-testid="stSidebar"] * { color: #212529 !important; }
     
-    /* Поля ввода - СВЕТЛАЯ ТЕМА */
     .stTextInput > div > div > input, 
     .stNumberInput > div > div > input,
     .stTextArea > div > div > textarea,
-    .stSelectbox > div > div > select,
-    .stDateInput > div > div > input,
-    .stTimeInput > div > div > input {
+    .stSelectbox > div > div > select {
         background-color: #ffffff;
         border-radius: 15px;
         border: 1px solid #ced4da;
         font-size: 16px;
         color: #212529 !important;
     }
-    .stTextInput > div > div > input:focus, 
-    .stNumberInput > div > div > input:focus,
-    .stTextArea > div > div > textarea:focus {
-        border-color: #4a90e2;
-        box-shadow: 0 0 0 2px rgba(74,144,226,0.2);
-        outline: none;
-    }
-    .stTextInput label, .stNumberInput label, .stTextArea label, .stSelectbox label {
-        color: #212529 !important;
-        font-weight: 500;
-    }
+    .stTextInput label, .stNumberInput label, .stTextArea label { color: #212529 !important; font-weight: 500; }
     
-    /* Выпадающие списки */
-    .stSelectbox > div > div > div {
-        background-color: #ffffff;
-    }
+    .stButton > button { background: #4a90e2; color: white; border-radius: 30px; }
+    .stButton > button:hover { background: #5a9ee2; }
     
-    /* Мультиселект */
-    .stMultiSelect div {
-        background-color: #ffffff;
-        color: #212529;
-    }
+    .stDataFrame { background: #ffffff; border: 1px solid #dee2e6; border-radius: 15px; }
+    .stDataFrame th { background: #4a90e2 !important; color: white !important; }
+    .stDataFrame td { color: #212529 !important; }
     
-    /* Кнопки */
-    .stButton > button {
-        background: #4a90e2;
-        color: white;
-        border: none;
-        border-radius: 30px;
-        padding: 10px 24px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
-    .stButton > button:hover {
-        transform: scale(1.02);
-        background: #5a9ee2;
-        color: white;
-    }
+    .stTabs [data-baseweb="tab-list"] { background: rgba(0,0,0,0.04); border-radius: 30px; }
+    .stTabs [data-baseweb="tab"] { color: #212529; }
+    .stTabs [aria-selected="true"] { background: #4a90e2 !important; color: white !important; }
     
-    /* Таблицы */
-    .stDataFrame {
-        background: #ffffff;
-        border-radius: 15px;
-        border: 1px solid #dee2e6;
-    }
-    .stDataFrame th {
-        background: #4a90e2 !important;
-        color: white !important;
-        font-weight: bold;
-    }
-    .stDataFrame td {
-        color: #212529 !important;
-    }
-    
-    /* Вкладки */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: rgba(0, 0, 0, 0.04);
-        border-radius: 30px;
-        padding: 5px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 25px;
-        padding: 8px 20px;
-        font-weight: bold;
-        color: #212529;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #4a90e2 !important;
-        color: white !important;
-    }
-    
-    /* Информационные блоки */
-    .stInfo {
-        background-color: #e9ecef !important;
-        color: #212529 !important;
-        border-left: 4px solid #4a90e2;
-    }
-    
-    /* Слайдеры */
-    .stSlider > div > div > div {
-        background-color: #4a90e2;
-    }
-    
-    /* Чекбоксы и радиокнопки */
-    .stCheckbox label, .stRadio label {
-        color: #212529 !important;
-    }
-    
-    /* === ТЁМНАЯ ТЕМА (автоматически) === */
     @media (prefers-color-scheme: dark) {
-        .stApp {
-            background: #1a1a1a;
-        }
-        
-        h1, h2, h3, h4, p, li, .stMarkdown, label, .stCaption {
-            color: #e0e0e0;
-        }
-        
-        div[data-testid="stMetric"] {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-        div[data-testid="stMetric"] label {
-            color: #e0e0e0 !important;
-        }
-        div[data-testid="stMetric"] div {
-            color: #e0e0e0 !important;
-        }
-        
-        [data-testid="stSidebar"] {
-            background: #2a2a2a;
-            border-right: 1px solid #444;
-        }
-        [data-testid="stSidebar"] * {
-            color: #e0e0e0 !important;
-        }
-        
-        /* Поля ввода - ТЁМНАЯ ТЕМА */
+        .stApp { background: #1a1a1a; }
+        h1, h2, h3, h4, p, li, .stMarkdown, label, .stCaption { color: #e0e0e0; }
+        div[data-testid="stMetric"] { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); }
+        div[data-testid="stMetric"] label { color: #e0e0e0 !important; }
+        div[data-testid="stMetric"] div { color: #e0e0e0 !important; }
+        [data-testid="stSidebar"] { background: #2a2a2a; border-color: #444; }
+        [data-testid="stSidebar"] * { color: #e0e0e0 !important; }
         .stTextInput > div > div > input, 
         .stNumberInput > div > div > input,
         .stTextArea > div > div > textarea,
-        .stSelectbox > div > div > select,
-        .stDateInput > div > div > input,
-        .stTimeInput > div > div > input {
+        .stSelectbox > div > div > select {
             background-color: #2d2d2d;
             border-color: #555;
             color: #e0e0e0 !important;
         }
-        .stTextInput > div > div > input:focus, 
-        .stNumberInput > div > div > input:focus,
-        .stTextArea > div > div > textarea:focus {
-            border-color: #4a90e2;
-        }
-        .stTextInput label, .stNumberInput label, .stTextArea label, .stSelectbox label {
-            color: #e0e0e0 !important;
-        }
-        
-        .stSelectbox > div > div > div {
-            background-color: #2d2d2d;
-            color: #e0e0e0;
-        }
-        
-        .stMultiSelect div {
-            background-color: #2d2d2d;
-            color: #e0e0e0;
-        }
-        
-        .stDataFrame {
-            background: #2d2d2d;
-            border-color: #444;
-        }
-        .stDataFrame td {
-            color: #e0e0e0 !important;
-        }
-        
-        .stTabs [data-baseweb="tab-list"] {
-            background-color: rgba(255, 255, 255, 0.05);
-        }
-        .stTabs [data-baseweb="tab"] {
-            color: #e0e0e0;
-        }
-        
-        .stInfo {
-            background-color: #2a2a2a !important;
-            color: #e0e0e0 !important;
-        }
-        
-        .stCheckbox label, .stRadio label {
-            color: #e0e0e0 !important;
-        }
-    }
-    
-    /* === ОБЩИЕ СТИЛИ (работают в обеих темах) === */
-    .stButton > button {
-        background: #4a90e2;
-        color: white;
-    }
-    .stButton > button:hover {
-        background: #5a9ee2;
-    }
-    
-    .stDataFrame th {
-        background: #4a90e2 !important;
-        color: white !important;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: #4a90e2 !important;
-        color: white !important;
+        .stTextInput label, .stNumberInput label, .stTextArea label { color: #e0e0e0 !important; }
+        .stDataFrame { background: #2d2d2d; border-color: #444; }
+        .stDataFrame td { color: #e0e0e0 !important; }
+        .stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.05); }
+        .stTabs [data-baseweb="tab"] { color: #e0e0e0; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -458,7 +278,6 @@ with st.sidebar:
     period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
     st.markdown("---")
     
-    # === ЗАГРУЗКА EXCEL ===
     st.markdown("### 📎 Загрузить Excel")
     uploaded_file = st.file_uploader("Файл .xlsx или .xls", type=["xlsx", "xls"])
     
@@ -470,7 +289,7 @@ with st.sidebar:
                 st.dataframe(df_upload.head(10), use_container_width=True)
             if st.button("📊 Добавить данные из Excel"):
                 added = 0
-                for idx, row in df_upload.iterrows():
+                for _, row in df_upload.iterrows():
                     try:
                         product = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ""
                         if not product or product.lower() in ['товар', 'название', 'nan']:
@@ -519,10 +338,8 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # === ВСТАВКА ТЕКСТА ===
     st.markdown("### 📝 Вставить текст из документа")
     st.info("Скопируйте текст из Word-файла и вставьте сюда")
-    
     manual_text = st.text_area("Вставьте текст с закупками:", height=200)
     
     if st.button("📊 Обработать текст", key="parse_manual"):
@@ -555,7 +372,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # === РУЧНОЕ ДОБАВЛЕНИЕ ===
     st.markdown("### ➕ Ручное добавление")
     with st.form("add_purchase"):
         product = st.text_input("Товар")
@@ -624,8 +440,7 @@ if not filtered.empty:
     col_r1, col_r2, col_r3 = st.columns(3)
     with col_r1:
         if st.button("📊 Сформировать отчёт", use_container_width=True):
-            report_data = generate_report(filtered, period)
-            st.session_state.report = report_data
+            st.session_state.report = generate_report(filtered, period)
             st.success("✅ Отчёт сформирован!")
     with col_r2:
         if st.button("📤 Выгрузить отчёт в Sheets", use_container_width=True):
@@ -676,7 +491,7 @@ with tab3:
         st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
-    if "report" in st.session_state and st.session_state.report:
+    if "report" in st.session_state:
         r = st.session_state.report
         st.subheader("📊 Сводка")
         st.dataframe(r["summary"], use_container_width=True)
