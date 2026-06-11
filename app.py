@@ -127,97 +127,104 @@ def parse_quantity(qty_str):
     return 1, "шт"
 
 def parse_docx_purchases(text):
+    """Улучшенный парсер для вашего формата DOCX"""
     purchases = []
     lines = text.split('\n')
     
+    # Регулярное выражение для поиска строк с данными
+    # Ищем: номер, название товара, сумму в конце
     for line in lines:
         line = line.strip()
         if not line:
             continue
+        
+        # Пропускаем заголовки и разделители
         if line.startswith('№') or line.startswith('--') or 'Товар' in line or 'Цена' in line:
             continue
         
-        parts = line.split()
-        if not parts:
+        # Пропускаем строки с только числами или короткие строки
+        if len(line) < 10:
             continue
         
-        if parts[0].isdigit():
-            product_parts = []
-            price_idx = -1
+        # Ищем сумму в конце строки (последнее число)
+        numbers = re.findall(r'(\d{3,6})', line)
+        if not numbers:
+            continue
+        
+        total = int(numbers[-1])  # Берём последнее число как сумму
+        
+        # Извлекаем название товара
+        # Удаляем номер в начале
+        product_line = re.sub(r'^\d+\s+', '', line)
+        # Удаляем сумму в конце
+        product_line = re.sub(r'\s+\d{3,6}\s*$', '', product_line)
+        # Удаляем цену (числа с тг/₸)
+        product_line = re.sub(r'\d+(?:[.,]\d+)?\s*(?:тг|₸)[^\d]*', '', product_line)
+        # Удаляем количество (числа с кг/г/л/шт)
+        product_line = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product_line, flags=re.IGNORECASE)
+        # Очищаем от лишних пробелов
+        product = re.sub(r'\s+', ' ', product_line).strip()
+        
+        # Если название слишком короткое или пустое — пропускаем
+        if not product or len(product) < 3:
+            continue
+        
+        # Определяем количество и единицу
+        quantity = 1
+        unit = "шт"
+        
+        # Ищем количество в кг
+        kg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*кг', line, re.IGNORECASE)
+        g_match = re.search(r'(\d+(?:[.,]\d+)?)\s*г', line, re.IGNORECASE)
+        l_match = re.search(r'(\d+(?:[.,]\d+)?)\s*л', line, re.IGNORECASE)
+        
+        if kg_match:
+            quantity = float(kg_match.group(1).replace(',', '.'))
+            if g_match:
+                quantity += float(g_match.group(1).replace(',', '.')) / 1000
+            unit = "кг"
+        elif g_match:
+            quantity = float(g_match.group(1).replace(',', '.')) / 1000
+            unit = "кг"
+        elif l_match:
+            quantity = float(l_match.group(1).replace(',', '.'))
+            unit = "л"
+        
+        # Определяем цену за единицу
+        price_per_unit = 0
+        price_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:тг|₸)', line)
+        if price_match:
+            price_val = float(price_match.group(1).replace(',', '.'))
+            # Если есть "за ... кг" или "за ... л"
+            per_kg = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*кг', line, re.IGNORECASE)
+            per_l = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*л', line, re.IGNORECASE)
             
-            for i in range(1, len(parts)):
-                if re.search(r'\d+', parts[i]) and (i+1 < len(parts) and ('тг' in parts[i+1] or '₸' in parts[i+1] or 'тг' in parts[i])):
-                    price_idx = i
-                    break
-                product_parts.append(parts[i])
-            
-            product = ' '.join(product_parts).strip()
-            
-            total = 0
-            for i in range(len(parts)-1, -1, -1):
-                if re.search(r'^\d+$', parts[i]):
-                    total = int(parts[i])
-                    break
-            
-            if total == 0:
-                sum_match = re.search(r'(\d{4,6})$', line)
-                if sum_match:
-                    total = int(sum_match.group(1))
-            
-            if product and total > 0:
-                price_per_unit = 0
-                price_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:тг|₸)', line)
-                if price_match:
-                    price_val = float(price_match.group(1).replace(',', '.'))
-                    if 'за' in line and 'кг' in line:
-                        kg_match = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*кг', line)
-                        if kg_match:
-                            qty = float(kg_match.group(1).replace(',', '.'))
-                            price_per_unit = round(price_val / qty, 2)
-                        else:
-                            price_per_unit = price_val
-                    elif 'за' in line and 'л' in line:
-                        l_match = re.search(r'за\s+(\d+(?:[.,]\d+)?)\s*л', line)
-                        if l_match:
-                            qty = float(l_match.group(1).replace(',', '.'))
-                            price_per_unit = round(price_val / qty, 2)
-                        else:
-                            price_per_unit = price_val
-                    else:
-                        price_per_unit = price_val
-                
-                quantity = 1
-                unit = "шт"
-                
-                kg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*кг', line)
-                g_match = re.search(r'(\d+(?:[.,]\d+)?)\s*г', line)
-                l_match = re.search(r'(\d+(?:[.,]\d+)?)\s*л', line)
-                pcs_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:шт|штук|пачк|упаковк|бутылк)', line)
-                
-                if kg_match:
-                    quantity = float(kg_match.group(1).replace(',', '.'))
-                    if g_match:
-                        quantity += float(g_match.group(1).replace(',', '.')) / 1000
-                    unit = "кг"
-                elif g_match:
-                    quantity = float(g_match.group(1).replace(',', '.')) / 1000
-                    unit = "кг"
-                elif l_match:
-                    quantity = float(l_match.group(1).replace(',', '.'))
-                    unit = "л"
-                elif pcs_match:
-                    quantity = float(pcs_match.group(1).replace(',', '.'))
-                    unit = "шт"
-                
-                purchases.append({
-                    "Товар": product,
-                    "Цена за ед.": price_per_unit,
-                    "Количество": quantity,
-                    "Единица": unit,
-                    "Сумма": total
-                })
+            if per_kg:
+                qty = float(per_kg.group(1).replace(',', '.'))
+                price_per_unit = round(price_val / qty, 2)
+            elif per_l:
+                qty = float(per_l.group(1).replace(',', '.'))
+                price_per_unit = round(price_val / qty, 2)
+            else:
+                price_per_unit = price_val
+        
+        purchases.append({
+            "Товар": product,
+            "Цена за ед.": price_per_unit,
+            "Количество": quantity,
+            "Единица": unit,
+            "Сумма": total
+        })
     
-    return purchases
+    # Удаляем дубликаты по названию товара (оставляем первый)
+    unique_purchases = []
+    seen_products = set()
+    for p in purchases:
+        if p["Товар"] not in seen_products:
+            seen_products.add(p["Товар"])
+            unique_purchases.append(p)
+    
+    return unique_purchases
 
 def generate_report(df, period_name):
     if df.empty:
