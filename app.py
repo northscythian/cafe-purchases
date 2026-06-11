@@ -81,9 +81,79 @@ def detect_category(product):
                 return cat
     return "Прочее"
 
-# === ПРОСТОЙ ПАРСЕР ТЕКСТА ===
+# === СПЕЦИАЛЬНЫЙ ПАРСЕР ДЛЯ ВАШЕГО ФАЙЛА ===
+def parse_my_docx(text):
+    """Парсер специально для формата Полный_журнал_закупок_Замиры.docx"""
+    purchases = []
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Пропускаем заголовки и разделители
+        if line.startswith('№') or line.startswith('--') or 'Товар' in line or 'Цена' in line:
+            continue
+        if len(line) < 10:
+            continue
+        
+        # Ищем номер в начале строки
+        if line[0].isdigit():
+            # Разбиваем строку по пробелам
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            
+            # Ищем сумму (последнее число)
+            total = 0
+            for p in reversed(parts):
+                if p.isdigit() and len(p) >= 3:
+                    total = int(p)
+                    break
+            
+            if total == 0:
+                continue
+            
+            # Собираем название товара (всё между номером и суммой)
+            # Находим индекс последнего числа (суммы)
+            last_num_idx = -1
+            for i in range(len(parts)-1, -1, -1):
+                if parts[i].isdigit() and len(parts[i]) >= 3:
+                    last_num_idx = i
+                    break
+            
+            if last_num_idx <= 1:
+                continue
+            
+            # Название — это всё от индекса 1 до last_num_idx-1
+            product_parts = parts[1:last_num_idx]
+            product = ' '.join(product_parts).strip()
+            
+            # Очищаем название от лишнего
+            product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:тг|₸)', '', product)
+            product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product)
+            product = re.sub(r'\s+', ' ', product).strip()
+            
+            if product and len(product) > 2 and total > 0:
+                purchases.append({
+                    "Товар": product,
+                    "Сумма": total
+                })
+    
+    # Удаляем дубликаты
+    unique = []
+    seen = set()
+    for p in purchases:
+        if p["Товар"] not in seen:
+            seen.add(p["Товар"])
+            unique.append(p)
+    
+    return unique
+
+# === УНИВЕРСАЛЬНЫЙ ПАРСЕР ТЕКСТА ===
 def parse_simple_text(text):
-    """Простой парсер для текста с закупками"""
+    """Универсальный парсер для текста с закупками"""
     purchases = []
     lines = text.split('\n')
     
@@ -99,7 +169,7 @@ def parse_simple_text(text):
         
         total = int(numbers[-1])
         
-        # Название товара
+        # Название товара — всё, что перед суммой
         product = re.sub(r'^\d+\s+', '', line)
         product = re.sub(r'\s+\d{3,6}\s*$', '', product)
         product = re.sub(r'\d+\s*(?:тг|₸)', '', product)
@@ -292,9 +362,16 @@ with st.sidebar:
     
     manual_text = st.text_area("Вставьте текст с закупками:", height=200)
     
+    # Выбор режима парсинга
+    parse_mode = st.radio("Режим парсинга:", ["Авто (рекомендуется)", "Для файла Замиры (специальный)"])
+    
     if st.button("📊 Обработать текст", key="parse_manual"):
         if manual_text:
-            purchases = parse_simple_text(manual_text)
+            if parse_mode == "Для файла Замиры (специальный)":
+                purchases = parse_my_docx(manual_text)
+            else:
+                purchases = parse_simple_text(manual_text)
+            
             if purchases:
                 added = 0
                 for p in purchases:
@@ -306,7 +383,7 @@ with st.sidebar:
                         "Единица": p.get("Единица", "шт"),
                         "Сумма": p["Сумма"],
                         "Поставщик": "Замира",
-                        "Категория": detect_category(p["Товар"]),
+                        "Категория": detect_category(p["Товаر"]),
                         "Примечание": ""
                     }])
                     df = pd.concat([df, new_row], ignore_index=True)
