@@ -70,6 +70,8 @@ CATEGORIES = {
     "Молочные продукты": ["сыр", "моцарелла", "сметана", "молоко", "майонез", "сметанковый", "джугас"],
     "Овощи и зелень": ["лук", "чеснок", "помидоры", "огурцы", "морковь", "перец", "картофель", "укроп", "петрушка", "сельдерей", "джусай", "зеленый лук"],
     "Бакалея": ["мука", "масло", "кетчуп", "соус", "лаваш", "яйца", "специи", "приправа", "орегано", "базилик", "лавровый лист", "уксус", "соевый соус", "барбекю", "фритюра", "дрожжи", "томатная паста"],
+    "Хозтовары": ["перчатки", "тряпки", "губки", "салфетки", "кнопки", "маркер", "тетрадь", "мелки", "посуда", "сковорода", "тарелки", "миски", "поварешка", "калькулятор"],
+    "Аптечка": ["бинт", "перекись", "спирт", "зеленка", "марля", "ватные палочки"],
     "Прочее": []
 }
 
@@ -81,104 +83,134 @@ def detect_category(product):
                 return cat
     return "Прочее"
 
-# === СПЕЦИАЛЬНЫЙ ПАРСЕР ДЛЯ ВАШЕГО ФАЙЛА ===
-def parse_my_docx(text):
-    """Парсер специально для формата Полный_журнал_закупок_Замиры.docx"""
-    purchases = []
-    lines = text.split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Пропускаем заголовки и разделители
-        if line.startswith('№') or line.startswith('--') or 'Товар' in line or 'Цена' in line:
-            continue
-        if len(line) < 10:
-            continue
-        
-        # Ищем номер в начале строки
-        if line[0].isdigit():
-            # Разбиваем строку по пробелам
-            parts = line.split()
-            if len(parts) < 4:
-                continue
-            
-            # Ищем сумму (последнее число)
-            total = 0
-            for p in reversed(parts):
-                if p.isdigit() and len(p) >= 3:
-                    total = int(p)
-                    break
-            
-            if total == 0:
-                continue
-            
-            # Собираем название товара (всё между номером и суммой)
-            last_num_idx = -1
-            for i in range(len(parts)-1, -1, -1):
-                if parts[i].isdigit() and len(parts[i]) >= 3:
-                    last_num_idx = i
-                    break
-            
-            if last_num_idx <= 1:
-                continue
-            
-            product_parts = parts[1:last_num_idx]
-            product = ' '.join(product_parts).strip()
-            
-            # Очищаем название от лишнего
-            product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:тг|₸)', '', product)
-            product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product)
-            product = re.sub(r'\s+', ' ', product).strip()
-            
-            if product and len(product) > 2 and total > 0:
-                purchases.append({
-                    "Товар": product,
-                    "Сумма": total
-                })
-    
-    # Удаляем дубликаты
-    unique = []
-    seen = set()
-    for p in purchases:
-        if p["Товар"] not in seen:
-            seen.add(p["Товар"])
-            unique.append(p)
-    
-    return unique
+def detect_unit(product):
+    """Определяет единицу измерения по названию товара"""
+    product = product.lower()
+    if any(x in product for x in ["перчатки", "тряпки", "салфетки", "кнопки", "маркер", "тетрадь", "мелки", "тарелки", "миски", "поварешка", "калькулятор", "рулон"]):
+        return "шт"
+    if any(x in product for x in ["бинт", "марля"]):
+        return "м"
+    if any(x in product for x in ["спирт", "перекись", "зеленка"]):
+        return "мл"
+    return "шт"
 
-# === УНИВЕРСАЛЬНЫЙ ПАРСЕР ТЕКСТА ===
-def parse_simple_text(text):
-    """Универсальный парсер для текста с закупками"""
-    purchases = []
-    lines = text.split('\n')
+def smart_parse_excel(df_upload):
+    """Умный парсер Excel файла — определяет структуру и корректно заполняет данные"""
+    required_cols = ["Дата", "Товар", "Цена за ед.", "Количество", "Единица", "Сумма", "Поставщик", "Категория", "Примечаение"]
     
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        numbers = re.findall(r'\b(\d{3,6})\b', line)
-        if not numbers:
-            continue
-        
-        total = int(numbers[-1])
-        
-        product = re.sub(r'^\d+\s+', '', line)
-        product = re.sub(r'\s+\d{3,6}\s*$', '', product)
-        product = re.sub(r'\d+\s*(?:тг|₸)', '', product)
-        product = re.sub(r'\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|шт|бутылки|пачку|мешка|упаковок|кусочка|лоток|ведер|пакет|пучка|банки)', '', product)
-        product = re.sub(r'\s+', ' ', product).strip()
-        
-        if product and len(product) > 2 and total > 0:
-            purchases.append({
-                "Товар": product,
-                "Сумма": total
-            })
+    # Словарь соответствия колонок (поддерживает разные названия)
+    col_mapping = {
+        "Товар": ["товар", "название", "продукт", "наименование", "item", "product"],
+        "Цена за ед.": ["цена за ед", "цена за ед.", "цена", "price", "цена за кг", "цена за шт"],
+        "Количество": ["количество", "кол-во", "qty", "quantity", "кол"],
+        "Единица": ["единица", "ед", "ед.", "unit"],
+        "Сумма": ["сумма", "total", "сумма ₸", "сумма (₸)"],
+        "Поставщик": ["поставщик", "supplier", "поставщик"],
+        "Категория": ["категория", "category", "кат"],
+        "Дата": ["дата", "date", "день"],
+        "Примечание": ["примечание", "note", "комментарий"]
+    }
     
-    return purchases
+    # Определяем, какие колонки есть в файле
+    detected = {}
+    for target, variants in col_mapping.items():
+        for col in df_upload.columns:
+            col_lower = str(col).lower().strip()
+            for variant in variants:
+                if variant in col_lower:
+                    detected[target] = col
+                    break
+            if target in detected:
+                break
+    
+    # Если не нашли "Товар" — предположим, что это первая колонка
+    if "Товар" not in detected and len(df_upload.columns) > 0:
+        detected["Товар"] = df_upload.columns[0]
+    
+    result = []
+    for idx, row in df_upload.iterrows():
+        try:
+            # Получаем товар
+            product = str(row[detected["Товар"]]) if "Товар" in detected and pd.notna(row[detected["Товар"]]) else ""
+            if not product or product.lower() in ['товар', 'название', 'nan', '']:
+                continue
+            
+            # Получаем цену
+            price = 0
+            if "Цена за ед." in detected and pd.notna(row[detected["Цена за ед."]]):
+                try:
+                    price = float(str(row[detected["Цена за ед."]]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
+                except:
+                    price = 0
+            
+            # Получаем количество
+            qty = 1
+            if "Количество" in detected and pd.notna(row[detected["Количество"]]):
+                try:
+                    qty = float(str(row[detected["Количество"]]).replace(',', '.').strip())
+                except:
+                    qty = 1
+            
+            # Получаем единицу измерения
+            unit = "шт"
+            if "Единица" in detected and pd.notna(row[detected["Единица"]]):
+                unit = str(row[detected["Единица"]]).strip()
+            else:
+                unit = detect_unit(product)
+            
+            # Получаем сумму
+            total = 0
+            if "Сумма" in detected and pd.notna(row[detected["Сумма"]]):
+                try:
+                    total = float(str(row[detected["Сумма"]]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
+                except:
+                    total = 0
+            
+            # Если сумма не указана, но есть цена и количество
+            if total == 0 and price > 0 and qty > 0:
+                total = price * qty
+            # Если цена не указана, но есть сумма и количество
+            if price == 0 and total > 0 and qty > 0:
+                price = total / qty
+            
+            # Получаем поставщика
+            supplier = "Замира"
+            if "Поставщик" in detected and pd.notna(row[detected["Поставщик"]]):
+                supplier = str(row[detected["Поставщик"]]).strip()
+            
+            # Получаем категорию (если есть)
+            category = None
+            if "Категория" in detected and pd.notna(row[detected["Категория"]]):
+                category = str(row[detected["Категория"]]).strip()
+            if not category:
+                category = detect_category(product)
+            
+            # Получаем дату
+            date = datetime.now().strftime("%d.%m.%Y")
+            if "Дата" in detected and pd.notna(row[detected["Дата"]]):
+                try:
+                    d = pd.to_datetime(row[detected["Дата"]], errors='coerce')
+                    if pd.notna(d):
+                        date = d.strftime("%d.%m.%Y")
+                except:
+                    pass
+            
+            if total > 0:
+                result.append({
+                    "Дата": date,
+                    "Товар": product[:100],
+                    "Цена за ед.": round(price, 2),
+                    "Количество": qty,
+                    "Единица": unit,
+                    "Сумма": round(total, 2),
+                    "Поставщик": supplier,
+                    "Категория": category,
+                    "Примечание": ""
+                })
+        except Exception as e:
+            continue
+    
+    return pd.DataFrame(result)
 
 def generate_report(df, period_name):
     if df.empty:
@@ -278,7 +310,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📦 Учет закупок кафе")
-st.caption("Данные сохраняются в Google Sheets")
+st.caption("Данные сохраняются в Google Sheets | Поддерживает любые форматы Excel")
 
 df = load_data()
 if df.empty:
@@ -293,105 +325,26 @@ with st.sidebar:
     
     # === ЗАГРУЗКА EXCEL ===
     st.markdown("### 📎 Загрузить Excel")
+    st.info("Поддерживаются любые форматы: приложение само определит колонки")
     uploaded_file = st.file_uploader("Файл .xlsx или .xls", type=["xlsx", "xls"])
     
     if uploaded_file is not None:
         try:
             df_upload = pd.read_excel(uploaded_file)
             st.success(f"Загружено: {len(df_upload)} строк")
-            with st.expander("Просмотр данных"):
+            with st.expander("Просмотр загруженных данных"):
                 st.dataframe(df_upload.head(10), use_container_width=True)
-            if st.button("📊 Добавить данные из Excel"):
-                added = 0
-                for idx, row in df_upload.iterrows():
-                    try:
-                        product = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ""
-                        if not product or product.lower() in ['товар', 'название', 'nan']:
-                            continue
-                        price = 0
-                        try:
-                            price = float(str(row.iloc[1]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
-                        except:
-                            price = 0
-                        qty = 1
-                        try:
-                            qty = float(str(row.iloc[2]).replace(',', '.').strip())
-                        except:
-                            qty = 1
-                        total = 0
-                        try:
-                            total = float(str(row.iloc[3]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
-                        except:
-                            total = 0
-                        if total == 0 and price > 0 and qty > 0:
-                            total = price * qty
-                        if total > 0:
-                            new_row = pd.DataFrame([{
-                                "Дата": datetime.now().strftime("%d.%m.%Y"),
-                                "Товар": product[:100],
-                                "Цена за ед.": round(price, 2),
-                                "Количество": qty,
-                                "Единица": "шт",
-                                "Сумма": round(total, 2),
-                                "Поставщик": "Замира",
-                                "Категория": detect_category(product),
-                                "Примечание": ""
-                            }])
-                            df = pd.concat([df, new_row], ignore_index=True)
-                            added += 1
-                    except:
-                        pass
-                if added > 0:
+            if st.button("📊 Умная обработка и добавление", use_container_width=True):
+                processed_df = smart_parse_excel(df_upload)
+                if not processed_df.empty:
+                    df = pd.concat([df, processed_df], ignore_index=True)
                     save_data(df)
-                    st.success(f"✅ Добавлено {added} позиций!")
+                    st.success(f"✅ Добавлено {len(processed_df)} позиций!")
                     st.rerun()
                 else:
-                    st.error("Не удалось добавить позиции")
+                    st.error("Не удалось распознать данные. Проверьте формат файла.")
         except Exception as e:
             st.error(f"Ошибка: {e}")
-    
-    st.markdown("---")
-    
-    # === ВСТАВКА ТЕКСТА ===
-    st.markdown("### 📝 Вставить текст из документа")
-    st.info("Скопируйте текст из Word-файла и вставьте сюда")
-    
-    manual_text = st.text_area("Вставьте текст с закупками:", height=200)
-    
-    # Выбор режима парсинга
-    parse_mode = st.radio("Режим парсинга:", ["Авто (рекомендуется)", "Для файла Замиры (специальный)"])
-    
-    if st.button("📊 Обработать текст", key="parse_manual"):
-        if manual_text:
-            if parse_mode == "Для файла Замиры (специальный)":
-                purchases = parse_my_docx(manual_text)
-            else:
-                purchases = parse_simple_text(manual_text)
-            
-            if purchases:
-                added = 0
-                for p in purchases:
-                    new_row = pd.DataFrame([{
-                        "Дата": datetime.now().strftime("%d.%m.%Y"),
-                        "Товар": p["Товар"],
-                        "Цена за ед.": p.get("Цена за ед.", 0),
-                        "Количество": p.get("Количество", 1),
-                        "Единица": p.get("Единица", "шт"),
-                        "Сумма": p["Сумма"],
-                        "Поставщик": "Замира",
-                        "Категория": detect_category(p["Товар"]),
-                        "Примечание": ""
-                    }])
-                    df = pd.concat([df, new_row], ignore_index=True)
-                    added += 1
-                if added > 0:
-                    save_data(df)
-                    st.success(f"✅ Добавлено {added} позиций!")
-                    st.rerun()
-                else:
-                    st.error("Не удалось распознать данные")
-            else:
-                st.error("Не найдено данных в тексте")
     
     st.markdown("---")
     
@@ -403,7 +356,7 @@ with st.sidebar:
         with col1:
             price = st.number_input("Цена за ед.", min_value=0.0, value=0.0, step=10.0)
             qty = st.number_input("Количество", min_value=0.0, value=1.0, step=0.1)
-            unit = st.selectbox("Единица", ["кг", "г", "л", "мл", "шт"])
+            unit = st.selectbox("Единица", ["кг", "г", "л", "мл", "шт", "м"])
         with col2:
             total = st.number_input("Сумма", min_value=0.0, value=0.0, step=100.0)
             supplier = st.selectbox("Поставщик", ["Замира", "Магнум", "Метро", "Другое"])
