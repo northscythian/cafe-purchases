@@ -311,7 +311,7 @@ with st.sidebar:
     period = st.radio("Показать", ["Сегодня", "Неделя", "Месяц", "Всё время"])
     st.markdown("---")
     
-    # === ЗАГРУЗКА EXCEL С УМНОЙ ОБРАБОТКОЙ ===
+    # === ЗАГРУЗКА EXCEL ===
     st.markdown("### 📎 Загрузить Excel")
     uploaded_file = st.file_uploader("Файл .xlsx или .xls", type=["xlsx", "xls"])
     
@@ -319,62 +319,32 @@ with st.sidebar:
         try:
             df_upload = pd.read_excel(uploaded_file)
             st.success(f"Загружено: {len(df_upload)} строк")
-            
-            with st.expander("Просмотр загруженных данных"):
+            with st.expander("Просмотр данных"):
                 st.dataframe(df_upload.head(10), use_container_width=True)
-            
-            if st.button("📊 Добавить данные", key="add_excel_data"):
-                added_count = 0
-                error_rows = []
-                
+            if st.button("📊 Добавить данные"):
+                added = 0
                 for idx, row in df_upload.iterrows():
                     try:
-                        col_names = df_upload.columns.tolist()
-                        
-                        # Поиск колонок
-                        product_col, price_col, qty_col, total_col = 0, 1, 2, 3
-                        for i, col in enumerate(col_names):
-                            col_lower = str(col).lower()
-                            if 'товар' in col_lower or 'продукт' in col_lower or 'название' in col_lower:
-                                product_col = i
-                            elif 'цена' in col_lower and ('ед' in col_lower or 'кг' in col_lower):
-                                price_col = i
-                            elif 'количество' in col_lower or 'кол-во' in col_lower:
-                                qty_col = i
-                            elif 'сумма' in col_lower:
-                                total_col = i
-                        
-                        product = str(row.iloc[product_col]) if pd.notna(row.iloc[product_col]) else ""
-                        
-                        if not product or product.lower() in ['товар', 'название', 'продукт', 'nan']:
+                        product = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ""
+                        if not product or product.lower() in ['товар', 'название', 'nan']:
                             continue
-                        
                         price = 0
-                        if price_col is not None and pd.notna(row.iloc[price_col]):
-                            try:
-                                price = float(str(row.iloc[price_col]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
-                            except:
-                                price = 0
-                        
+                        try:
+                            price = float(str(row.iloc[1]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
+                        except:
+                            price = 0
                         qty = 1
-                        if qty_col is not None and pd.notna(row.iloc[qty_col]):
-                            try:
-                                qty = float(str(row.iloc[qty_col]).replace(',', '.').strip())
-                            except:
-                                qty = 1
-                        
+                        try:
+                            qty = float(str(row.iloc[2]).replace(',', '.').strip())
+                        except:
+                            qty = 1
                         total = 0
-                        if total_col is not None and pd.notna(row.iloc[total_col]):
-                            try:
-                                total = float(str(row.iloc[total_col]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
-                            except:
-                                total = 0
-                        
+                        try:
+                            total = float(str(row.iloc[3]).replace(',', '.').replace('₸', '').replace('тг', '').strip())
+                        except:
+                            total = 0
                         if total == 0 and price > 0 and qty > 0:
                             total = price * qty
-                        if price == 0 and total > 0 and qty > 0:
-                            price = total / qty
-                        
                         if total > 0:
                             new_row = pd.DataFrame([{
                                 "Дата": datetime.now().strftime("%d.%m.%Y"),
@@ -388,22 +358,17 @@ with st.sidebar:
                                 "Примечание": ""
                             }])
                             df = pd.concat([df, new_row], ignore_index=True)
-                            added_count += 1
-                        else:
-                            error_rows.append(f"Строка {idx+2}")
-                    except Exception as e:
-                        error_rows.append(f"Строка {idx+2}")
-                
-                if added_count > 0:
+                            added += 1
+                    except:
+                        pass
+                if added > 0:
                     save_data(df)
-                    st.success(f"✅ Добавлено {added_count} позиций!")
-                    if error_rows:
-                        st.warning(f"⚠️ Пропущено {len(error_rows)} строк")
+                    st.success(f"✅ Добавлено {added} позиций!")
                     st.rerun()
                 else:
-                    st.error("Не удалось добавить ни одной позиции. Проверьте формат файла.")
+                    st.error("Не удалось добавить позиции")
         except Exception as e:
-            st.error(f"Ошибка чтения файла: {e}")
+            st.error(f"Ошибка: {e}")
     
     st.markdown("---")
     
@@ -491,4 +456,70 @@ if not filtered.empty:
             st.session_state.report = report_data
             st.success("✅ Отчёт сформирован!")
     with col_r2:
-        if st.button("📤
+        if st.button("📤 Выгрузить отчёт в Sheets", use_container_width=True):
+            if send_report_to_sheets(filtered, period):
+                st.success("✅ Отчёт выгружен в Google Sheets (лист 'ОТЧЕТЫ')!")
+            else:
+                st.error("Ошибка выгрузки")
+    with col_r3:
+        report_data = generate_report(filtered, period)
+        if report_data and not report_data["summary"].empty:
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                report_data["summary"].to_excel(writer, sheet_name="Сводка", index=False)
+                report_data["by_category"].to_excel(writer, sheet_name="По категориям", index=False)
+                report_data["top_products"].to_excel(writer, sheet_name="Топ товаров", index=False)
+                report_data["by_supplier"].to_excel(writer, sheet_name="По поставщикам", index=False)
+                report_data["daily"].to_excel(writer, sheet_name="По дням", index=False)
+                report_data["abc"].to_excel(writer, sheet_name="ABC анализ", index=False)
+            st.download_button("📥 Скачать отчёт (Excel)", output.getvalue(), f"отчет_{datetime.now().strftime('%Y-%m-%d')}.xlsx", use_container_width=True)
+
+st.markdown("---")
+tab1, tab2, tab3, tab4 = st.tabs(["📊 По дням", "🍽️ По категориям", "📦 По товарам", "📈 Отчёты"])
+
+with tab1:
+    if not filtered.empty and "Дата_парс" in filtered.columns:
+        daily = filtered.groupby(filtered["Дата_парс"].dt.date)["Сумма"].sum().reset_index()
+        daily.columns = ["Дата", "Сумма"]
+        if not daily.empty:
+            fig = px.line(daily, x="Дата", y="Сумма", template="plotly_dark", color_discrete_sequence=["#d4a373"])
+            fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
+
+with tab2:
+    if not filtered.empty:
+        by_cat = filtered.groupby("Категория")["Сумма"].sum().reset_index()
+        fig = px.pie(by_cat, values="Сумма", names="Категория", template="plotly_dark")
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(by_cat.sort_values("Сумма", ascending=False), use_container_width=True)
+
+with tab3:
+    if not filtered.empty:
+        by_product = filtered.groupby("Товар")["Сумма"].sum().sort_values(ascending=False).head(15).reset_index()
+        fig = px.bar(by_product, x="Сумма", y="Товар", orientation='h', template="plotly_dark", color_discrete_sequence=["#d4a373"])
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=500)
+        st.plotly_chart(fig, use_container_width=True)
+
+with tab4:
+    if "report" in st.session_state and st.session_state.report:
+        r = st.session_state.report
+        st.subheader("Сводка")
+        st.dataframe(r["summary"], use_container_width=True)
+        st.subheader("Расходы по категориям")
+        st.dataframe(r["by_category"], use_container_width=True)
+        st.subheader("Топ-10 товаров")
+        st.dataframe(r["top_products"], use_container_width=True)
+        st.subheader("Расходы по поставщикам")
+        st.dataframe(r["by_supplier"], use_container_width=True)
+        st.subheader("ABC-анализ")
+        st.dataframe(r["abc"][["Товар", "Сумма", "Доля", "Категория"]], use_container_width=True)
+        abc_chart = r["abc"].groupby("Категория")["Сумма"].sum().reset_index()
+        if not abc_chart.empty:
+            fig = px.pie(abc_chart, values="Сумма", names="Категория", template="plotly_dark", title="ABC-анализ")
+            fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Нажмите 'Сформировать отчёт' для просмотра аналитики")
+
+st.caption("💾 Данные в Google Sheets | Отчёты можно выгрузить в Excel или Google Sheets")
