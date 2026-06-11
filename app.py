@@ -203,7 +203,23 @@ st.markdown("""
 <style>
     .stApp { background: linear-gradient(135deg, #2d2b2a 0%, #1a1a1a 100%); }
     div[data-testid="stMetric"] { background: linear-gradient(135deg, #3d3a38, #2c2a28); border-radius: 20px; padding: 20px; border: 1px solid #d4a373; }
-    h1, h2, h3, h4 { color: #d4a373 !important; }
+    
+    /* ТОЛЬКО ЦВЕТ ТЕКСТА МЕНЯЕМ НА ЗЕЛЁНЫЙ */
+    h1, h2, h3, h4, p, li, span, div, .stMarkdown, .stCaption, label {
+        color: #4ade80 !important;
+    }
+    /* Заголовки чуть ярче */
+    h1, h2, h3, h4 {
+        color: #22c55e !important;
+    }
+    /* Цифры в метриках */
+    div[data-testid="stMetric"] div {
+        color: #4ade80 !important;
+    }
+    div[data-testid="stMetric"] label {
+        color: #22c55e !important;
+    }
+    
     .stButton > button { background: linear-gradient(135deg, #d4a373, #b5835a); color: white; border-radius: 30px; }
     .stDataFrame { background: #2a2a2a; border-radius: 15px; border: 1px solid #d4a373; }
     .stDataFrame th { background: #d4a373 !important; color: #1a1a1a !important; }
